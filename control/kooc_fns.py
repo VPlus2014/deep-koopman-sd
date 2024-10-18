@@ -4,23 +4,25 @@ from scipy.integrate import odeint
 import numpy as np
 from tqdm import tqdm
 
+
 def pend_dynamics(model):
-    def wrapper(x0, t, K, x_goal=np.array([0, 0]), us = [], ts = []):
+    def wrapper(x0, t, K, x_goal=np.array([0, 0]), us=[], ts=[]):
         # us is used to store inputs for evaluation
         phi, omega = x0
         x0 = x0.reshape((1, 1, 2))
         x_goal = x_goal.reshape((1, 1, 2))
-        y = model.encode(x0-x_goal)[0].T
+        y = model.encode(x0 - x_goal)[0].T
 
-        u = (K@y)[0, 0]
+        u = (K @ y)[0, 0]
         us.append(u)
         ts.append(t)
         dydt = [omega, -np.sin(phi) - u]
         return dydt
+
     return wrapper
 
 
-class KOOC():
+class KOOC:
     """
     Koopman Operator Optimal Control currently supporting only Denis.
     Uses ODE45 to simulate the actual dynamics obtained through the gain matrix
@@ -38,14 +40,15 @@ class KOOC():
         simulate: run a batch of dynamics simulated using ode45
 
     """
+
     def __init__(self, system, model, dt, B=None):
         self.model = model
         self.dt = dt
-        if system == 'pendulum':
+        if system == "pendulum":
             self.dynamics = pend_dynamics(model)
         else:
             self.dynamics = system
-        if B==None:
+        if B == None:
             self.B = np.array([[0], [1]])
         else:
             self.B = B
@@ -53,15 +56,14 @@ class KOOC():
     def d2c(self, dim, A):
         B = self.B
         dt = self.dt
-        ldim = len(A)-dim
+        ldim = len(A) - dim
         u_dim = B.shape[1]
         B_hat = np.append(B, np.zeros((1, ldim)))[:, np.newaxis]
         C = np.append(np.ones((1, dim)), np.zeros((1, ldim)))
-        G = harold.State(A, B_hat, C, .0, dt)
-        sys = harold.undiscretize(G, 'tustin')
+        G = harold.State(A, B_hat, C, 0.0, dt)
+        sys = harold.undiscretize(G, "tustin")
         A_c = sys.a
         return A_c, B_hat
-
 
     def simulate(self, init_conds, x_goal, T, Q=1, r=1, show=True):
         """Simulate closed loop dynamics
@@ -80,7 +82,7 @@ class KOOC():
         x_goal = np.array(x_goal)
         results = self.model.predict(init_conds, 1, return_ko=True)
         kos = results[-1]
-        #import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         dim = init_conds.shape[-1]
         us, ts, traj = [], [], []
         if show:
@@ -105,10 +107,9 @@ class KOOC():
             Q_hat = np.zeros((A.shape))
             Q_hat[:dim, :dim] = Q
             K, _, _ = lqr(A_c, B_hat, Q_hat, r)
-            t = np.arange(0, T*self.dt, self.dt)
+            t = np.arange(0, T * self.dt, self.dt)
             u, _t = [], []
-            sol = odeint(self.dynamics, init_conds[i, 0], t,
-                         args=(K, x_goal, u, _t))
+            sol = odeint(self.dynamics, init_conds[i, 0], t, args=(K, x_goal, u, _t))
 
             us.append(u)
             ts.append(_t)

@@ -8,6 +8,7 @@ from ilqr.dynamics import BatchAutoDiffDynamics
 from ilqr.cost import QRCost
 from tqdm import tqdm
 
+
 def ilqr_duffing(dt=0.1):
     x = T.dscalar("x")  # Position.
     x_dot = T.dscalar("x_dot")  # Velocity.
@@ -15,10 +16,12 @@ def ilqr_duffing(dt=0.1):
 
     x_dot_dot = x - x**3 - u
 
-    f = T.stack([
-        x + (x_dot) * dt,
-        x_dot + x_dot_dot * dt,
-    ])
+    f = T.stack(
+        [
+            x + (x_dot) * dt,
+            x_dot + x_dot_dot * dt,
+        ]
+    )
 
     x_inputs = [x, x_dot]
     u_inputs = [u]
@@ -33,10 +36,12 @@ def ilqr_pend(dt=0.1):
     u = T.dscalar("u")  # Force.
     x_dot_dot = -np.sin(x) - u
 
-    f = T.stack([
-        x + (x_dot) * dt,
-        x_dot + x_dot_dot * dt,
-    ])
+    f = T.stack(
+        [
+            x + (x_dot) * dt,
+            x_dot + x_dot_dot * dt,
+        ]
+    )
 
     x_inputs = [x, x_dot]  # State vector.
     u_inputs = [u]  # Control vector.
@@ -44,11 +49,12 @@ def ilqr_pend(dt=0.1):
     dynamics = AutoDiffDynamics(f, x_inputs, u_inputs)
     return dynamics
 
-class ILQR():
+
+class ILQR:
     def __init__(self, dynamics, dt):
-        if dynamics == 'pendulum':
+        if dynamics == "pendulum":
             self.dynamics = ilqr_pend(dt)
-        elif dynamics == 'duffing':
+        elif dynamics == "duffing":
             self.dynamics = ilqr_duffing(dt)
         else:
             print("Unknown dynamics")
@@ -68,7 +74,7 @@ class ILQR():
             us_init = np.random.uniform(-1, 1, (T, 1))
             ilqr = iLQR(self.dynamics, cost, T)
             xs, us = ilqr.fit(x0, us_init)
-            t = np.arange(0, self.dt*T, self.dt)
+            t = np.arange(0, self.dt * T, self.dt)
             xses.append(xs)
             uses.append(us)
         xses = np.array(xses)
@@ -76,7 +82,7 @@ class ILQR():
         return xses, uses, t
 
 
-def global_cost(x_goal = [0.0, 0.0], Q=1, R=1):
+def global_cost(x_goal=[0.0, 0.0], Q=1, R=1):
     if np.isscalar(Q):
         Q = Q * np.eye(2)
     else:

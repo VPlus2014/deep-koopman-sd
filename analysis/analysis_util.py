@@ -1,9 +1,11 @@
+from typing import List
 import numpy as np
 from pathlib import Path
 import json
 import torch
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from matplotlib.axes import Axes
 from tqdm import tqdm
 
 
@@ -23,7 +25,7 @@ def get_errors(model, x_true, n_shifts):
     """
     x_pred = model.predict(x_true, n_shifts)
     t_end = np.min((x_true.shape[1], x_pred.shape[1]))
-    se = (x_pred[:, 1:t_end, :] - x_true[:, 1:t_end, :])**2
+    se = (x_pred[:, 1:t_end, :] - x_true[:, 1:t_end, :]) ** 2
     se = np.mean(se, axis=-1)
     se = np.swapaxes(se, 0, 1)
     mse = np.mean(se, axis=1)
@@ -67,7 +69,7 @@ def load_models(networks, root_path, model_names):
 def plot_mse_mad(models, model_labels, x_true, n_shifts, t_end):
     mses, mads, mqts = [], [], []
     for model in tqdm(models):
-        x, mse, mad, mqt =  get_errors(model, x_true, t_end)
+        x, mse, mad, mqt = get_errors(model, x_true, t_end)
         mses.append(mse)
         mads.append(mad)
         mqts.append(mqt)
@@ -75,34 +77,52 @@ def plot_mse_mad(models, model_labels, x_true, n_shifts, t_end):
     mads = np.array(mads)
     mqts = np.array(mqts)
 
-    plt.rcParams.update({'font.size': 15})
-    mpl.rcParams['axes.prop_cycle'] = mpl.cycler(color=["grey", "purple", "k", "orange", "red"])
+    plt.rcParams.update({"font.size": 15})
+    mpl.rcParams["axes.prop_cycle"] = mpl.cycler(
+        color=["grey", "purple", "k", "orange", "red"]
+    )
 
-
-    fig, ax = plt.subplots(1, 2, figsize=(12, 4), dpi=100, facecolor='white')
+    fig, ax = plt.subplots(1, 2, figsize=(12, 4), dpi=100, facecolor="white")
     for idx, label in enumerate(model_labels):
-        p = ax[0].plot(x[:n_shifts], mses[idx, :n_shifts],
-                       linewidth=2, label=label)
-        ax[0].plot(x[n_shifts-1:], mses[idx, n_shifts-1:], '--',
-                   color=p[0].get_color(), linewidth=2)
+        p = ax[0].plot(x[:n_shifts], mses[idx, :n_shifts], linewidth=2, label=label)
+        ax[0].plot(
+            x[n_shifts - 1 :],
+            mses[idx, n_shifts - 1 :],
+            "--",
+            color=p[0].get_color(),
+            linewidth=2,
+        )
 
-        ax[0].set_ylabel(r'MSE')
+        ax[0].set_ylabel(r"MSE")
 
-        p = ax[1].errorbar(x[:n_shifts], mads[idx, :n_shifts],
-                   yerr=mqts[idx, :, :n_shifts], errorevery=len(x)//5,
-                   capsize=2, capthick=2, label=label)
+        p = ax[1].errorbar(
+            x[:n_shifts],
+            mads[idx, :n_shifts],
+            yerr=mqts[idx, :, :n_shifts],
+            errorevery=len(x) // 5,
+            capsize=2,
+            capthick=2,
+            label=label,
+        )
 
-        ax[1].errorbar(x[n_shifts:], mads[idx, n_shifts:],
-                       yerr=mqts[idx, :, n_shifts:], errorevery=len(x)//5,
-                       capsize=2, capthick=2, ls='--', color=p[0].get_color())
-        ax[1].set_ylabel(r'MAD')
+        ax[1].errorbar(
+            x[n_shifts:],
+            mads[idx, n_shifts:],
+            yerr=mqts[idx, :, n_shifts:],
+            errorevery=len(x) // 5,
+            capsize=2,
+            capthick=2,
+            ls="--",
+            color=p[0].get_color(),
+        )
+        ax[1].set_ylabel(r"MAD")
     for i in range(2):
-        ax[i].spines['top'].set_visible(False)
-        ax[i].spines['right'].set_visible(False)
-        ax[i].set_xlabel(r'$k$')
+        ax[i].spines["top"].set_visible(False)
+        ax[i].spines["right"].set_visible(False)
+        ax[i].set_xlabel(r"$k$")
         ax[i].set_xlim([1, t_end])
 
-        ax[i].set_yscale('log')
+        ax[i].set_yscale("log")
     if np.max(mses) > 10**13:
         ax[0].set_ylim([None, 10**6])
     if np.max(mads) > 10**3:
@@ -115,7 +135,7 @@ def plot_mse_mad(models, model_labels, x_true, n_shifts, t_end):
     return x, mses, mads, mqts
 
 
-def plot_trajectories(model, n_shifts, x_true, setlim=None):
+def plot_trajectories(model, n_shifts: int, x_true: np.ndarray, setlim=None):
     """
     Plot trajectory and phase plots for ground truth and prediction
     Args:
@@ -124,39 +144,78 @@ def plot_trajectories(model, n_shifts, x_true, setlim=None):
         x_true: (ndarray) ground truth
         setlim: (float) axis limit (auto if left none)
     """
-    plt.rcParams.update({'font.size': 15})
-    fig, ax = plt.subplots(1, 3, figsize=(18, 4), facecolor='white', dpi=100)
+    plt.rcParams.update({"font.size": 15})
+    fig, ax = plt.subplots(1, 3, figsize=(18, 4), facecolor="white", dpi=100)
+    ax: List[Axes]
     lw = 3
     x_pred = model.predict(x_true, x_true.shape[1])
     t_end = x_true.shape[1]
 
     time = np.arange(0, t_end, 1)
     for i in range(3):
-        ax[i].axis('off')
+        ax[i].axis("off")
     for i in range(5):
-        ax[2].plot(x_pred[i, :n_shifts, 0], x_pred[i, :n_shifts, 1], color='purple', linewidth=lw)
-        ax[2].plot(x_pred[i, n_shifts:t_end, 0], x_pred[i, n_shifts:t_end, 1], '--', color='purple', linewidth=lw)
-        ax[2].plot(x_true[i, :t_end, 0], x_true[i, :t_end, 1], '--', alpha=0.5, color='grey', linewidth=lw)
-        ax[2].scatter(x_pred[i, 0, 0], x_pred[i, 0, 1], color='purple', s=50)
-        ax[2].set_xlabel(r'$\theta$')
-        ax[2].set_ylabel(r'$\omega$')
-        ax[2].set_title(r'Phase Portrait', pad=20)
+        ax[2].plot(
+            x_pred[i, :n_shifts, 0],
+            x_pred[i, :n_shifts, 1],
+            color="purple",
+            linewidth=lw,
+        )
+        ax[2].plot(
+            x_pred[i, n_shifts:t_end, 0],
+            x_pred[i, n_shifts:t_end, 1],
+            "--",
+            color="purple",
+            linewidth=lw,
+        )
+        ax[2].plot(
+            x_true[i, :t_end, 0],
+            x_true[i, :t_end, 1],
+            "--",
+            alpha=0.5,
+            color="grey",
+            linewidth=lw,
+        )
+        ax[2].scatter(x_pred[i, 0, 0], x_pred[i, 0, 1], color="purple", s=50)
+        ax[2].set_xlabel(r"$\theta$")
+        ax[2].set_ylabel(r"$\omega$")
+        ax[2].set_title(r"Phase Portrait", pad=20)
 
     for i in range(5):
-        ax[0].plot(time[:n_shifts], x_pred[i, :n_shifts, 0], color='purple', linewidth=lw)
-        ax[0].plot(time[n_shifts:], x_pred[i, n_shifts:t_end, 0], '--', color='purple', linewidth=lw)
-        ax[0].plot(time, x_true[i, :t_end, 0], '--', alpha=0.5, color='grey', linewidth=lw)
-        ax[0].set_xlabel(r'$k$')
-        ax[0].set_ylabel(r'$\theta$')
-        ax[0].set_title(r'$\theta$ Trajectory', pad=20)
+        ax[0].plot(
+            time[:n_shifts], x_pred[i, :n_shifts, 0], color="purple", linewidth=lw
+        )
+        ax[0].plot(
+            time[n_shifts:],
+            x_pred[i, n_shifts:t_end, 0],
+            "--",
+            color="purple",
+            linewidth=lw,
+        )
+        ax[0].plot(
+            time, x_true[i, :t_end, 0], "--", alpha=0.5, color="grey", linewidth=lw
+        )
+        ax[0].set_xlabel(r"$k$")
+        ax[0].set_ylabel(r"$\theta$")
+        ax[0].set_title(r"$\theta$ Trajectory", pad=20)
 
     for i in range(5):
-        ax[1].plot(time[:n_shifts], x_pred[i, :n_shifts, 1], color='purple', linewidth=lw)
-        ax[1].plot(time[n_shifts:], x_pred[i, n_shifts:t_end, 1], '--', color='purple', linewidth=lw)
-        ax[1].plot(time, x_true[i, :t_end, 1], '--', alpha=0.5, color='grey', linewidth=lw)
-        ax[1].set_xlabel(r'$k$')
-        ax[1].set_ylabel(r'$\omega$')
-        ax[1].set_title(r'$\omega$ Trajectory', pad=20)
+        ax[1].plot(
+            time[:n_shifts], x_pred[i, :n_shifts, 1], color="purple", linewidth=lw
+        )
+        ax[1].plot(
+            time[n_shifts:],
+            x_pred[i, n_shifts:t_end, 1],
+            "--",
+            color="purple",
+            linewidth=lw,
+        )
+        ax[1].plot(
+            time, x_true[i, :t_end, 1], "--", alpha=0.5, color="grey", linewidth=lw
+        )
+        ax[1].set_xlabel(r"$k$")
+        ax[1].set_ylabel(r"$\omega$")
+        ax[1].set_title(r"$\omega$ Trajectory", pad=20)
 
     if setlim is not None:
         ax[0].set_ylim([setlim, -setlim])
@@ -164,8 +223,8 @@ def plot_trajectories(model, n_shifts, x_true, setlim=None):
         ax[2].set_ylim([setlim, -setlim])
         ax[2].set_xlim([setlim, -setlim])
     for i in range(3):
-        ax[i].spines['top'].set_visible(False)
-        ax[i].spines['right'].set_visible(False)
+        ax[i].spines["top"].set_visible(False)
+        ax[i].spines["right"].set_visible(False)
 
     fig.tight_layout()
     plt.subplots_adjust(top=0.9, wspace=0.3)
