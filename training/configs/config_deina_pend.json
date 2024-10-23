@@ -1,9 +1,9 @@
 {
     "network": "deina",
-    "train_data": "data/raw_data/non-affine/toy_train_x.npy",
-    "val_data": "data/raw_data/non-affine/toy_val_x.npy",
-    "train_data_inputs": "data/raw_data/non-affine/toy_train_u.npy",
-    "val_data_inputs": "data/raw_data/non-affine/toy_val_u.npy",
+    "train_data": "data/raw_data/pend_train_x.npy",
+    "val_data": "data/raw_data/pend_val_x.npy",
+    "train_data_inputs": "data/raw_data/pend_train_u.npy",
+    "val_data_inputs": "data/raw_data/pend_val_u.npy",
     "enc_shape": [
         2,
         50,

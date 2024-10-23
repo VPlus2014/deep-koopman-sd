@@ -1,8 +1,8 @@
 {
     "network": "denis",
-    "mode": "floyd",
-    "train_data": "/data/raw_data/pend_train_x.npy",
-    "val_data": "/data/raw_data/pend_val_x.npy",
+    "mode": "!floyd",
+    "train_data": "data/raw_data/pend_train_x.npy",
+    "val_data": "data/raw_data/pend_val_x.npy",
     "enc_shape": [
         2,
         100,

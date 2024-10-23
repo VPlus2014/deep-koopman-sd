@@ -1,8 +1,8 @@
 {
     "network": "denis",
-    "mode": "floyd",
-    "train_data": "/data/raw_data/duffing_train.npy",
-    "val_data": "/data/raw_data/duffing_val.npy",
+    "mode": "!floyd",
+    "train_data": "data/raw_data/duffing_train.npy",
+    "val_data": "data/raw_data/duffing_val.npy",
     "enc_shape": [
         2,
         25,

@@ -1,11 +1,18 @@
+import math
 from pathlib import Path
-from typing import Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from scipy.integrate import odeint
 from dataclasses import dataclass
-import torch
+from gymnasium import spaces
+
+
+def convex_combination(x1, x2, alpha) -> np.ndarray:
+    r"""$(1-\alpha) * x1 + \alpha * x2$"""
+    x1 = np.asarray(x1)
+    return x1 + alpha * (x2 - x1)
 
 
 @dataclass
@@ -28,20 +35,20 @@ class KoopmanData:
             KoopmanData(test_x, test_u),
         )
 
-    def fn_inputs(self, dir: Path, prefix=""):
-        return f"{dir}/{prefix}_u.npy"
+    def fn_inputs(self, fn_head: Path):
+        return f"{fn_head}_u.npy"
 
-    def fn_traj(self, dir: Path, prefix=""):
-        return f"{dir}/{prefix}_x.npy"
+    def fn_traj(self, fn_head: Path):
+        return f"{fn_head}_x.npy"
 
-    def save(self, dir_name: Path, prefix=""):
-        Path(dir_name).mkdir(parents=True, exist_ok=True)
-        np.save(self.fn_traj(dir_name, prefix), self.xs)
-        np.save(self.fn_inputs(dir_name, prefix), self.us)
+    def save(self, fn_head: Path):
+        Path(fn_head).parent.mkdir(parents=True, exist_ok=True)
+        np.save(self.fn_traj(fn_head), self.xs)
+        np.save(self.fn_inputs(fn_head), self.us)
 
-    def load(self, dir_name: Path, prefix=""):
-        self.xs = np.load(self.fn_traj(dir_name, prefix))
-        self.us = np.load(self.fn_inputs(dir_name, prefix))
+    def load(self, dir_name: Path):
+        self.xs = np.load(self.fn_traj(dir_name))
+        self.us = np.load(self.fn_inputs(dir_name))
 
 
 class Data_Generator:
@@ -51,7 +58,8 @@ class Data_Generator:
     Args:
         gradient: function compatable with the scipy's ODE solver,
                   i.e. taking in (x, t, u), and returns dydt
-        dt: sampling time
+        dt_int: integration time step
+        fs: sampling frequency
         dim: system's dimension
 
     Methods:
@@ -59,32 +67,47 @@ class Data_Generator:
                   a Koopman dataclass
     """
 
-    def __init__(self, gradient, dt: float, dim: int, seed=None):
+    def __init__(
+        self,
+        gradient: Callable[[float, np.ndarray, Any], np.ndarray],
+        dt_int: float,
+        fs: int = 1,
+        dtype=np.float_,
+        seed=None,
+    ):
         self.gradient = gradient
-        self.dt = dt
-        self.dim = dim
-        self.data = KoopmanData(None, None)
+        self._dt_int = dt_int
+        self._fs = fs
+        assert 0 < fs and math.isfinite(fs), "Sampling frequency should be positive"
+        self._data = KoopmanData(None, None)
         self._rng = np.random.default_rng(seed)
+        self.dtype = dtype
 
-    def _ou_generator(self, N, n_steps, params: Tuple[float, float, np.ndarray]):
-        theta, sigma, max_u = params
+    def _ou_generator(
+        self,
+        N: int,
+        n_steps: int,
+        lamb: float,
+        sigma: float,
+        min_u: np.ndarray,
+        max_u: np.ndarray,
+        U_space: spaces.Box,
+    ):
         rng = self._rng
+        u_n = np.clip([U_space.sample() for _ in range(N)], min_u, max_u)
+        dimU = np.shape(u_n)[-1]
+        u_mu = 0.5 * (min_u + max_u * np.ones_like(u_n))  # 长期均值
+        u_mu[np.isnan(u_mu)] = 0.0
 
-        assert len(max_u) == self.dim
-
-        X_n = (rng.random((N, self.dim)) - 0.5) * 2 * max_u
-        mus = (rng.random((N, self.dim)) - 0.5) * 2 * max_u
-        results = [X_n]
-
+        dt = self._fs * self._dt_int
+        dt_sqrt = np.sqrt(dt)
+        results = [u_n]
         for i in range(n_steps - 1):
-            noise = sigma * rng.normal(N, self.dim) * np.sqrt(self.dt)
-            X_n = X_n + theta * (mus - X_n) * self.dt + noise
-            results.append(X_n)
-        results = np.array(results)
-
-        for idx, i in enumerate(max_u):
-            if i == 0:
-                results[:, :, idx] = 0
+            noise = rng.normal(size=(N, dimU)) * (sigma * dt_sqrt)
+            u_n = u_n + (u_mu - u_n) * (lamb * dt) + noise
+            u_n = np.clip(u_n, min_u, max_u)
+            results.append(u_n)
+        results = np.asarray(results)
 
         return np.swapaxes(results, 0, 1)
 
@@ -98,31 +121,54 @@ class Data_Generator:
         """"""
         traj = [x0]
         is_valid = True
+        dti = self._dt_int
         for i in range(len(us)):
             tspan = [ts[i], ts[i + 1]]
-            x0 = odeint(self.gradient, x0, tspan, args=(us[i],))[1]
-            traj.append(x0)
-            if constraint is not None and constraint(x0):
+            ys = odeint(self.gradient, x0, tspan, args=(us[i],), tfirst=True, hmax=dti)
+            if self._all_subject_to(ys, constraint):
+                x0 = ys[-1]
+                traj.append(x0)
+            else:
                 is_valid = False
                 break
         return np.array(traj), is_valid
 
-    def _apply_constraint(self, result, constraint):
+    def _all_subject_to(
+        self, xs: List[np.ndarray], constraint: Callable[[np.ndarray], float]
+    ):
         if constraint is None:
             return True
-        a = sum([constraint(i) for i in result])
-        if a > 0:
-            return False
-        else:
+        if all([constraint(x) <= 0 for x in xs]):
             return True
+        else:
+            return False
 
-    def _get_initial_cond(self, max_x, constraint):
+    def _get_initial_cond(
+        self,
+        X0_space: spaces.Box,
+        X0_low: np.ndarray,
+        X0_high: np.ndarray,
+        constraint: Callable[[np.ndarray], float],
+    ):
         while True:
-            xs = (self._rng.random([self.dim]) * 2 - 1) * max_x
-            if self._apply_constraint([xs], constraint):
-                return xs
+            x0 = np.clip(X0_space.sample(), X0_low, X0_high)
+            if self._all_subject_to([x0], constraint):
+                return x0
 
-    def generate(self, N: int, n_steps: int, params: Dict, constraint=None):
+    def generate(
+        self,
+        N: int,  # 轨迹数
+        n_steps: int,  # 每条轨迹的迭代步数
+        X0_low: np.ndarray,  # 初始状态下界
+        X0_high: np.ndarray,  # 初始状态上界
+        U_low: np.ndarray,  # 输入下界
+        U_high: np.ndarray,  # 输入上界
+        ou_theta=2,
+        ou_sigma=1,
+        add_zero_u=True,  # 以零控制量为对照组生成另一条轨迹
+        constraint: Callable[[np.ndarray], float] = None,
+        seed=None,
+    ):
         """
         Args:
             N: (int) number of trajectories simulated
@@ -133,33 +179,37 @@ class Data_Generator:
                     "keep_zero": (bool) half of trajectories generated will be autonomous
                     "max_u": (float) maximum input magnitude
                     "max_x"" (float) maximum state magnitude
-            constraint: function which returns true if a constraint was violated for the
-                        current state
+            constraint: function which returns true if a constraint was violated for the\
+                    current state
         Returns:
             KoopmanData object containing the generated trajectories and inputs
             xs: (np.ndarray) shape (N, n_steps+1, dim)
             us: (np.ndarray) shape (N, n_steps, dim)
         """
+        dtype = self.dtype
+        X0_space = spaces.Box(X0_low, X0_high, dtype=dtype, seed=seed)
+        U_space = spaces.Box(U_low, U_high, dtype=dtype, seed=seed)
+        assert all((U_low <= 0) & (U_high >= 0)), "Input space should contain zeros"
 
-        theta = params.get("theta", 2)
-        sigma = params.get("sigma", 1)
-        keep_zero = params.get("keep_zero", True)
-        max_u = params.get("max_u")
-        max_x = params.get("max_x")
-
-        assert len(max_x) == len(max_u) == self.dim
-
-        ts = np.linspace(0, n_steps * self.dt, n_steps + 1)
+        ts = np.linspace(0, n_steps * (self._fs * self._dt_int), n_steps + 1)
         trajs = []
         inputs = []
         for i in tqdm(range(N)):
             while True:
                 # Generate a random initial condition
-                x0_ = self._get_initial_cond(max_x, constraint)  # (dimX,)
+                x0_ = self._get_initial_cond(
+                    X0_space, X0_low, X0_high, constraint
+                )  # (dimX,)
 
                 # Generate random inputs
                 us1 = self._ou_generator(
-                    1, n_steps, [theta, sigma, max_u]
+                    1,
+                    n_steps,
+                    lamb=ou_theta,
+                    sigma=ou_sigma,
+                    min_u=U_low,
+                    max_u=U_high,
+                    U_space=U_space,
                 )  # (1,n_steps,dimU)
 
                 # run input dynamics
@@ -168,7 +218,7 @@ class Data_Generator:
                     continue
 
                 # run dynamics with no input
-                if keep_zero:
+                if add_zero_u:
                     us2 = np.zeros_like(us1)
                     xs2, is_valid = self._simulate(x0_, ts, us2[0])
                     if not is_valid:
@@ -176,13 +226,13 @@ class Data_Generator:
 
                 trajs.append(xs1)
                 inputs.append(us1[0])
-                if keep_zero:
+                if add_zero_u:
                     trajs.append(xs2)
                     inputs.append(us2[0])
                 break
 
         xs = np.asarray(trajs)
         us = np.asarray(inputs)
-        self.data.us = us
-        self.data.xs = xs
-        return self.data
+        self._data.us = us
+        self._data.xs = xs
+        return self._data

@@ -1,0 +1,43 @@
+{
+    "network": "deina_sd",
+    "train_data": "data/raw_data/pend_control_train_x.npy",
+    "val_data": "data/raw_data/pend_control_val_x.npy",
+    "train_data_inputs": "data/raw_data/pend_control_train_u.npy",
+    "val_data_inputs": "data/raw_data/pend_control_val_u.npy",
+    "enc_shape": [
+        2,
+        50,
+        50,
+        16
+    ],
+    "enc_u_shape": [
+        2,
+        50,
+        50,
+        4
+    ],
+    "aux_shape": [
+        2,
+        50,
+        50,
+        96
+    ],
+    "n_shifts": 51,
+    "use_rbf": false,
+    "enc_rbf": false,
+    "use_enc_x": true,
+    "use_enc_u": false,
+    "use_complex": false,
+    "use_affine": false,
+    "kernel": "gaussian",
+    "drop_prob": 0.0,
+    "state_loss": 1.0,
+    "latent_loss": 1.0,
+    "zero_loss": 0.1,
+    "reg_loss": 1e-05,
+    "inf_loss": 1e-04,
+    "lr": 1e-3,
+    "lr_sch_step": 250,
+    "lr_sch_gamma": 0.5,
+    "description": "lren pendulum experiment, latent=10"
+}

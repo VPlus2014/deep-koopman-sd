@@ -26,7 +26,7 @@ def count_parameters(net):
     return df
 
 
-def affine_model_configurer(config):
+def affine_model_configurer(config: dict):
     model_config = {
         "enc_shape": config["enc_shape"],
         "aux_shape": config.get("aux_shape"),
@@ -39,10 +39,11 @@ def affine_model_configurer(config):
     return model_config
 
 
-def non_affine_model_configurer(config):
+def non_affine_model_configurer(config: dict):
     model_config = {
         "enc_shape": config["enc_shape"],
         "enc_u_shape": config.get("enc_u_shape"),
+        "aux_shape": config.get("aux_shape"),
         "n_shifts": config["n_shifts"],
         "dt": config.get("dt"),
         "use_rbf": config.get("use_rbf"),
@@ -53,9 +54,9 @@ def non_affine_model_configurer(config):
     return model_config
 
 
-def get_lr_scheduler(optimizer, config):
-    step = config.get("lr_sch_step") or 1000
-    gamma = config.get("lr_sch_gamma") or 0.1
+def get_lr_scheduler(optimizer, config: dict):
+    step = config.get("lr_sch_step", 1000)
+    gamma = config.get("lr_sch_gamma", 0.1)
     return optim.lr_scheduler.StepLR(optimizer, step, gamma=gamma)
 
 
@@ -75,7 +76,12 @@ def get_l2_weights(model: nn.Module) -> torch.Tensor:
     return l2_reg
 
 
-def koopman_loss(xy_target: torch.Tensor, xy_pred: torch.Tensor, config, model):
+def koopman_loss(
+    xy_pred: torch.Tensor,
+    xy_target: torch.Tensor,
+    config,
+    model,
+):
     dim = config["enc_shape"][0]
     x_targ, x_pred = xy_target[:, :, :dim], xy_pred[:, :, :dim]
     y_targ, y_pred = xy_target[:, :, dim:], xy_pred[:, :, dim:]
@@ -104,12 +110,12 @@ def koopman_loss(xy_target: torch.Tensor, xy_pred: torch.Tensor, config, model):
 
     r_arry = np.array(
         [
-            loss.detach().numpy(),
-            x_mse.detach().numpy(),
-            y_mse.detach().numpy(),
-            x_inf_mse.detach().numpy(),
-            zero_loss.detach().numpy(),
-            reg_loss.detach().numpy(),
+            loss.detach().cpu().numpy(),
+            x_mse.detach().cpu().numpy(),
+            y_mse.detach().cpu().numpy(),
+            x_inf_mse.detach().cpu().numpy(),
+            zero_loss.detach().cpu().numpy(),
+            reg_loss.detach().cpu().numpy(),
         ],
         dtype=np.double,
     )
