@@ -1,0 +1,27 @@
+{
+    "network": "lren",
+    "mode": "!floyd",
+    "train_data": "data/raw_data/affine/pend_train.npy",
+    "val_data": "data/raw_data/affine/pend_val.npy",
+    "enc_x_shape": [
+        2,
+        100,
+        100,
+        100
+    ],
+    "use_enc_u": false,
+    "n_shifts": 51,
+    "use_rbf": false,
+    "enc_rbf": false,
+    "kernel": "gaussian",
+    "drop_prob": 0.0,
+    "lw_state": 1.0,
+    "lw_latent": 1.0,
+    "lw_zero": 0.1,
+    "lw_l2reg": 1e-05,
+    "lw_inf_2": 1e-04,
+    "lr": 0.001,
+    "lr_sch_step": 250,
+    "lr_sch_gamma": 0.5,
+    "description": "lren pendulum experiment, latent=100"
+}

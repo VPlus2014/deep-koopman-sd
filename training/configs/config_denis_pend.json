@@ -1,0 +1,34 @@
+{
+    "network": "denis",
+    "train_data": "data/raw_data/duffing_train.npy",
+    "val_data": "data/raw_data/duffing_val.npy",
+    "enc_x_shape": [
+        2,
+        12,
+        25,
+        25,
+        50
+    ],
+    "aux_shape": [
+        2,
+        12,
+        25,
+        25,
+        52
+    ],
+    "n_shifts": 51,
+    "use_rbf": false,
+    "kernel": "gaussian",
+    "aux_rbf": false,
+    "drop_prob": 0.0,
+    "dt": 0.1,
+    "lw_state": 1.0,
+    "lw_latent": 1.0,
+    "lw_zero": 1,
+    "lw_l2reg": 1e-05,
+    "lw_inf_2": 1e-04,
+    "lr": 0.0005,
+    "lr_sch_step": 40,
+    "lr_sch_gamma": 0.5,
+    "description": "denis experiment demo"
+}

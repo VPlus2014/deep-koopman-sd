@@ -1,0 +1,43 @@
+{
+    "network": "deina_sd",
+    "description": "lren pendulum experiment, latent=10",
+    "data_name": "Pendulum_rU&0_Fs20_dt0.01_1M",
+    "weights_name": "20241025_125931/model.pt",
+    "enc_x_shape": [
+        3,
+        50,
+        50,
+        16
+    ],
+    "enc_u_shape": [
+        1,
+        50,
+        50,
+        4
+    ],
+    "aux_shape": [
+        3,
+        50,
+        50,
+        96
+    ],
+    "n_shifts": 51,
+    "use_rbf": false,
+    "enc_rbf": false,
+    "use_enc_x": true,
+    "use_enc_u": false,
+    "use_complex": false,
+    "use_affine": false,
+    "kernel": "gaussian",
+    "drop_prob": 0.0,
+    "lw_state": 1.0,
+    "lw_latent": 1.0,
+    "lw_zero": 0.1,
+    "lw_l2reg": 1e-05,
+    "lw_inf_2": 1e-04,
+    "lr": 1e-3,
+    "lr_sch_step": 250,
+    "lr_sch_gamma": 0.5,
+    "viz": true,
+    "viz_gui": true
+}

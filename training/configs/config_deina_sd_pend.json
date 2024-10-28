@@ -1,0 +1,45 @@
+{
+    "network": "deina_sd",
+    "data_name": "pend3_rU&0_250000",
+    "weights_name": "",
+    "train_data": "data/raw_data/pend3_rU&0_250000/train_x.npy",
+    "val_data": "data/raw_data/pend3_rU&0_250000/val_x.npy",
+    "train_data_inputs": "data/raw_data/pend3_rU&0_250000/train_u.npy",
+    "val_data_inputs": "data/raw_data/pend3_rU&0_250000/val_u.npy",
+    "enc_x_shape": [
+        3,
+        50,
+        50,
+        16
+    ],
+    "enc_u_shape": [
+        1,
+        50,
+        50,
+        4
+    ],
+    "aux_shape": [
+        3,
+        50,
+        50,
+        96
+    ],
+    "n_shifts": 51,
+    "use_rbf": false,
+    "enc_rbf": false,
+    "use_enc_x": true,
+    "use_enc_u": false,
+    "use_complex": false,
+    "use_affine": false,
+    "kernel": "gaussian",
+    "drop_prob": 0.0,
+    "lw_state": 1.0,
+    "lw_latent": 1.0,
+    "lw_zero": 0.1,
+    "lw_l2reg": 1e-05,
+    "lw_inf_2": 1e-04,
+    "lr": 1e-3,
+    "lr_sch_step": 250,
+    "lr_sch_gamma": 0.5,
+    "description": "lren pendulum experiment, latent=10"
+}
