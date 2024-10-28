@@ -112,6 +112,26 @@ from gymnasium import spaces
 
 
 def main():
+    ds = [3, 3, 3, 4]
+    a = [1, 2, 3]
+    b = [4]
+    c = [2]
+    d = 2
+    vs = [d for i in range(len(ds))]
+    d = np.broadcast_arrays(*[v for v in vs])
+    a = d[0]
+    c = a.reshape(-1, 1)
+    print(a.shape)
+    from data.dynamics import mathext
+
+    print(type(mathext.quat_normalize([1, 2, 3, 4])))
+    raise
+    y = np.cumsum(ds)
+    print(y)
+    x = np.random.rand(y[-1])
+    xs = np.split(x, y[:-1])
+    [print(v) for v in xs]
+    raise
     x = np.asarray([1, 2, 3], float)
     print(x.dtype)
     print((x // 2).dtype)

@@ -995,8 +995,8 @@ def _proc_frame(
             {
                 "keypoints": adjusted_keypoints,
                 "pitch": rpy[0],
-                "rolls": rpy[1],
-                "yaws": rpy[2],
+                "roll": rpy[1],
+                "yaw": rpy[2],
             },
             json_file,
             indent=4,
@@ -1011,7 +1011,7 @@ def _proc_frame(
 """%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%"""
 seed = None  # 设置随机种子
 rng = np.random.default_rng(seed)
-tracklet_num = 200  # 每个 (动作,波段) 组合生成的轨迹数量
+tracklet_num = 1  # 每个 (动作,波段) 组合生成的轨迹数量
 src_W = 640  # 源图片尺寸
 src_H = 512  # 源图片尺寸
 modes = [1, 2, 3, 4, 5]  # 一次生成动作数，mode = [1,2,3,4,5] # 左右上下直
@@ -1055,7 +1055,7 @@ Domain_AD = False  #
 # 比如随机出一个75，也就是干扰弹曲线最大值和初始值之间的像素距离为75像素
 # 针对每个mode，为了增加对sopt的遮挡，每个轨迹给出了独特的size
 # 输入输出跟目标的目录
-dir_output = PACK_DIR / "data/tracking_keypoints_DA"
+dir_output = PACK_DIR / "data" / "demo"  # 输出目录
 raw_data_path = PACK_DIR / "MB1"  # 原始图片存放根目录
 pose_generation = Tracklet_generation(raw_data_path)
 SAVE_Origianl = True
