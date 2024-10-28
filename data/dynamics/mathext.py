@@ -196,9 +196,9 @@ def rot_demo():
     v_r1 = quat_rot(q, vs)
     print(v_r1.shape)
 
-    dr = 1e-0
-    dp = 1e-0
-    dy = 1e-0
+    dr = 1e-1
+    dp = 1e-1
+    dy = 1e-1
     rs_deg = _bkbn.deg2rad(_bkbn.arange(-180, 180, dr))
     ps_deg = _bkbn.deg2rad(_bkbn.linspace(-90, 90, int(180 / dp)))
     ys_deg = _bkbn.deg2rad(_bkbn.arange(-180, 180, dy))
