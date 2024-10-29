@@ -2,12 +2,13 @@ from collections import OrderedDict
 import numpy as np
 from numpy import linalg as LA
 from .base import DynamicSystemBase, spaces
+from .mathext import *
 
 
 class DOF6PlaneQuat(DynamicSystemBase):
     """NED dof6 quaternion plane dynamics."""
 
-    g = 9.81  # gravity constant
+    _g = 9.81  # gravity constant
 
     def __init__(
         self,
@@ -26,13 +27,14 @@ class DOF6PlaneQuat(DynamicSystemBase):
         dtype=np.float_,
         seed=None,
     ):
-        super().__init__(seed=seed,dtype=dtype)
+        super().__init__(seed=seed, dtype=dtype)
         I_b = np.array(
             [
                 [I_xx, I_xy, I_xz],
                 [I_xy, I_yy, I_yz],
                 [I_xz, I_yz, I_zz],
-            ]
+            ],
+            dtype=dtype,
         )
         I_inv = np.linalg.inv(I_b)
         self._I_b = I_b
@@ -45,18 +47,26 @@ class DOF6PlaneQuat(DynamicSystemBase):
         self._C_L = 1.4  # lift coefficient
         self._C_D = 0.3  # drag coefficient
 
+        x_max = 200e3  # \approx 200km
         X_named = OrderedDict(
             [
+                # p_{/e}
+                ("X_e", spaces.Box(-x_max, x_max, dtype=dtype, seed=seed)),
+                ("Y_e", spaces.Box(-x_max, x_max, dtype=dtype, seed=seed)),
+                ("Z_e", spaces.Box(-x_max, x_max, dtype=dtype, seed=seed)),
+                # v_{/b}
                 ("U", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
                 ("V", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
                 ("W", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
+                # \omega_{/b}
                 ("P", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
                 ("Q", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
                 ("R", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
+                # Q_{eb}
+                ("q0", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q1", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q2", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q3", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
-                ("q4", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
             ]
         )
 
@@ -65,9 +75,10 @@ class DOF6PlaneQuat(DynamicSystemBase):
             OrderedDict(
                 [
                     ("nx", spaces.Box(-nx_b_max, nx_f_max, dtype=dtype, seed=seed)),
-                    ("M1", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
-                    ("M2", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
-                    ("M3", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
+                    # M_{/b}
+                    ("L", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
+                    ("M", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
+                    ("N", spaces.Box(-Moment_max, Moment_max, dtype=dtype, seed=seed)),
                 ]
             )
         )
@@ -92,27 +103,38 @@ class DOF6PlaneQuat(DynamicSystemBase):
     def rho(self):
         return 1.225  # kg/m^3
 
+    _X_dims = [3, 3, 3, 4]
+    _X_split = np.cumsum(_X_dims)[:-1]
+    _e1 = np.array([1, 0, 0], np.float_)
+
     def dynamics(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
-        uvw, pqr, Q_be = np.split(x, [3, 6])
-        q0, qv = np.split(Q_be, [1])
+        xyz, uvw, pqr, Q_eb = np.split(x, self._X_split)
+        reQ = quat_Re(Q_eb)
+        imQ = quat_Im(Q_eb)
         nx, lmn = np.split(u, [1])
         nx = nx.item()
-        V = LA.norm(uvw)
-        qbar = 0.5 * self.rho * V**2
 
-        e_v = uvw / max(V, 1e-4)
-        D_b = (-qbar * self._C_D) * e_v
+        # 气动力模型
+        V = LA.norm(uvw)
+        rho_hf_V = 0.5 * self.rho * V
+        qbar = rho_hf_V * V
+
+        D_b = (-rho_hf_V * self._C_D) * uvw
         L_b = (-qbar * self._C_L) * self._e3
 
-        dot_uvw = (
-            self._m_inv * (L_b + D_b) + (nx * self.g) * self._e1 - np.cross(pqr, uvw)
-        )
+        g = self._g
+
+        dot_xyz = quat_rot(Q_eb, uvw)
+        dot_uvw = self._m_inv * (L_b + D_b) + (nx * g) * self._e1 - np.cross(pqr, uvw)
         dot_pqr = self._I_inv @ (lmn - np.cross(pqr, self._I_b @ pqr))
-        dot_q0 = 0.5 * np.dot(pqr, qv)
-        dot_qv = -0.5 * (q0 * pqr + np.cross(pqr, qv))
+        w = 0.5 * pqr
+        dot_q0 = -np.dot(imQ, w)
+        dot_qv = reQ * pqr + np.cross(imQ, w)
 
         # print(int(t / 1e-3), LA.norm(Q_be))
-        dotX = np.concatenate([dot_uvw, dot_pqr, [dot_q0], dot_qv])
+        dotX = np.concatenate(
+            [dot_xyz, dot_uvw, dot_pqr, [dot_q0], dot_qv], dtype=self.dtype
+        )
         assert dotX.shape == x.shape
         return dotX
 

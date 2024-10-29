@@ -104,16 +104,18 @@ class DOF6PlaneQuat(DynamicSystemBase):
                 ("X_e", spaces.Box(-X_max, X_max, dtype=dtype, seed=seed)),
                 ("Y_e", spaces.Box(-X_max, X_max, dtype=dtype, seed=seed)),
                 ("Z_e", spaces.Box(-X_max, X_max, dtype=dtype, seed=seed)),
+                # v_{/b}
                 ("U", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
                 ("V", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
                 ("W", spaces.Box(-V_max, V_max, dtype=dtype, seed=seed)),
                 ("P", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
                 ("Q", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
                 ("R", spaces.Box(-omega_max, omega_max, dtype=dtype, seed=seed)),
+                # Q_{eb}
+                ("q0", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q1", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q2", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
                 ("q3", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
-                ("q4", spaces.Box(-1, 1, dtype=dtype, seed=seed)),
             ]
         )
 

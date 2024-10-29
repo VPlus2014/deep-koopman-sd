@@ -38,29 +38,31 @@ def toy_dynamics(y, t, u):
     return dydt
 
 
-def n2name(n:int):
+def n2name(n: int):
     unit = ""
     meta = [(1e9, "B"), (1e6, "M"), (1e3, "K")]
-    for m,s in meta:
-        if n>=m:
-            n= float(n/m)
+    for m, s in meta:
+        if n >= m:
+            n = float(n / m)
             unit = s
             break
     n = float(n)
-    n_ = f"{n:.0f}" if n==int(n) else f"{n:.3g}"
+    n_ = f"{n:.0f}" if n == int(n) else f"{n:.3g}"
     return f"{n_}{unit}"
+
+
 def main():
     seed = 123
     N = 10000
     n_steps = 50
     dt_int = 1e-2
     fs = 20
-    dyna = Pendulum(seed=seed)
+    dyna = DOF6PlaneQuat(seed=seed)
     # dyna.demo()
     sys_name = dyna.__class__.__name__
     u0 = None  # 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
     add_zeros_u = True  # 是否加入零控制量对照组
-    constraint = lambda x: not dyna.X_space.contains(x) # !!!数值类型不匹配也算违反约束
+    constraint = lambda x: not dyna.X_space.contains(x)  # !!!数值类型不匹配也算违反约束
     # constraint  = None
 
     generator = Data_Generator(
