@@ -117,6 +117,7 @@ class DOF6PlaneQuat(DynamicSystemBase):
 
     def dynamics(self, t: float, x: np.ndarray, u: np.ndarray) -> np.ndarray:
         xyz, uvw, pqr, Q_eb = np.split(x, self._X_split)
+        Q_eb = quat_normalize(Q_eb)  # 归一化
         reQ = quat_Re(Q_eb)
         imQ = quat_Im(Q_eb)
         nx, lmn = np.split(u, [1])
@@ -146,16 +147,7 @@ class DOF6PlaneQuat(DynamicSystemBase):
         assert dotX.shape == x.shape
         return dotX
 
-    def reset(self, seed: int = None) -> np.ndarray:
-        x0 = super().reset(seed)
-
-        ntry = 0
-        while x0 not in self.X_space:
-            x0 = self.X0_space.sample()
-            ntry += 1
-            if ntry == 10000:
-                print(f"Warning: sample initial state {ntry} times")
-
+    def _purify_X_on_reset(self, X: np.ndarray) -> np.ndarray:
         # 姿态若表示为四元数/旋转矩阵，则
         #   初始化时会面临在盒子空间上的低维嵌入问题，随机遍历很难出合法值
         # 若表示为欧拉角，则
@@ -163,55 +155,52 @@ class DOF6PlaneQuat(DynamicSystemBase):
         #   全姿态仿真面临万向节死锁
         # 随机欧拉角->四元数
         r = 1e-1
-        w = self._rng.random(size=3) * r
+        w = self._np_random.random(size=3) * r
         rpy_deg = [-180, -90, -180] + (0.5 + w) * [360, 180, 360]
         rpy_deg = rpy_deg.astype(np.int_)
         Q_eb = rpy2quat(*rpy_deg, degrees=True)
 
-        x0[-4:] = Q_eb
-        return x0
+        X[-4:] = Q_eb
+        return X
+
+    def _purify_X_on_step(self, X: np.ndarray) -> np.ndarray:
+        Q_eb = X[-4:]
+        #
+        # qn = quat_norm(Q_eb)
+        # err = np.abs(qn - 1)
+        # if err > 1e-2:
+        #     print(f"|Q_eb| is up to {err}")
+        #
+        Q_eb = quat_normalize(Q_eb)
+        X[-4:] = Q_eb
+        return X
+
+    def _is_terminal(self, x: np.ndarray) -> bool:
+        return self.speed_is_too_low(x)
 
     @staticmethod
     def speed_is_too_low(X: np.ndarray) -> bool:
         return LA.norm(X[:3]) < 0.1
 
     @staticmethod
-    def demo():
-        from scipy.integrate import odeint
+    def demo(dt=1e-3, Fs=10, seed=None):
+        from time import time
 
-        seed = None
-        rng = np.random.default_rng(seed)
+        t0 = time()
 
-        m = DOF6PlaneQuat()
-        x0 = m.X_space.sample()
-        u0 = m.U_space.sample()
-
-        # random quaternion
-        n_ = 1 - np.random.rand(3)
-        n_ = n_ / LA.norm(n_)
-        t = np.random.rand() * 2 * np.pi
-        q = [np.cos(t / 2), *(np.sin(t / 2) * n_)]
-        x0[-4:] = q
-
-        n_steps = 100
-        dt = 1e-3
-        us = [u0]
-        uk = u0
-        dt_sqrt = np.sqrt(dt)
-        for k in range(n_steps):
-            dw = (0.1 * dt_sqrt) * rng.normal(size=uk.shape)
-            du = uk + 0.9 * (0 - uk) * dt + dw
-            uk = np.clip(uk + du, m.U_space.low, m.U_space.high)
-            us.append(uk)
-
-        dyna = lambda t, x: m.dynamics(t, x, us[int(t / dt)])
-
-        ys: np.ndarray = odeint(
-            dyna, x0, np.arange(n_steps) * dt, tfirst=True, hmax=dt
-        )  # (L,D)
-        assert ys.shape == (n_steps, x0.shape[-1])
-
-        pass
+        m = DOF6PlaneQuat(dtype=np.float64, seed=seed)
+        y0 = m.reset()
+        ys = [y0]
+        term = False
+        trunc = False
+        k = 0
+        while not (term or trunc):
+            u = m.U_space.sample()
+            y1, term = m.step(u, Fs=Fs, dt=dt)
+            ys.append(y1)
+            k += 1
+            trunc = k > 100
+        print(f"Terminated after {k} steps, wall time: {time() - t0:.3f}s")
 
 
 if __name__ == "__main__":
