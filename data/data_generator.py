@@ -198,8 +198,10 @@ def main():
     u0: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
     add_zeros_u = False  # 是否加入零控制量对照组(gym版无效)
+    dtp_sim = np.float64  # 仿真数据类型
+    dtp_data = np.float32  # 数据类型
 
-    dyna = envcls(seed=seed)
+    dyna = envcls(seed=seed, dtype=dtp_sim)
 
     def _demo(env: DynamicSystemBase):
         t0 = time.time()
@@ -223,6 +225,10 @@ def main():
         _h, _s = divmod(secs_est, 60)
         _h, _m = divmod(_h, 60)
         speed_ratio = Dtsim / max(Dtwall, 1e-6)
+
+        scalar_nbytes = np.dtype(dtp_data).itemsize
+        nbytes_est = N * (dimY + (dimU, dimY) * n_steps) * scalar_nbytes
+        data_size_est = n2name(nbytes_est)
         print(
             "\n".join(
                 [
@@ -232,6 +238,7 @@ def main():
                     f"sim  time={Dtsim:.3f}s",
                     f"speed ratio={speed_ratio:.3g}x",
                     f"therefore sim {N} trajs would take at least {_h}:{_m}:{_s}",
+                    f"data size={data_size_est} Bytes",
                 ]
             )
         )
@@ -283,7 +290,10 @@ def main():
         rng = np.random.default_rng(seed)
         INT32_SUP = 1 << 31
         nenv = min(nenv, os.cpu_count())  # 限制最大并行环境数
-        envs = [envcls(seed=int(rng.integers(INT32_SUP))) for _ in range(nenv)]
+        envs = [
+            envcls(seed=int(rng.integers(INT32_SUP)), dtype=dtp_sim)
+            for _ in range(nenv)
+        ]
         data = gen_data(
             envs=envs,
             n_traj=N,
@@ -296,7 +306,9 @@ def main():
             n_workers=nenv,
             use_thread=use_thread,
         )
-    print(f"data: {data.xs.shape}")
+
+    data.xs = data.xs.astype(dtp_data)
+    data.us = data.us.astype(dtp_data)
     data_trn, data_val = data.train_test_split(0.8)
 
     data_trn.save(data_path / "train")
