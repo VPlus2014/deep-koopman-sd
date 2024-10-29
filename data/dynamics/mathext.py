@@ -266,6 +266,7 @@ def rot_demo():
 
     rpy_s = []
     pbar = tqdm(total=len(rs_deg) * len(ps_deg) * len(ys_deg) // batchsize)
+    print(f"{float(len(rs_deg) * len(ps_deg) * len(ys_deg)):.3g} test cases")
     for r_rad in rs_deg:
         for p_rad in ps_deg:
             for y_rad in ys_deg:
