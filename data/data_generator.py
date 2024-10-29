@@ -95,7 +95,7 @@ def gen_traj(
         if term:
             break
     ys = np.asarray(ys)
-    return us, ys
+    return ys, us
 
 
 def gen_data(
@@ -139,7 +139,7 @@ def gen_data(
                 tasks[ie] = None
 
                 simrst = tsk.result()
-                us, ys = simrst
+                ys, us = simrst
                 #
                 if len(ys) == Ts + 1:
                     Ys.append(ys)
@@ -204,6 +204,7 @@ def main():
     def _demo(env: DynamicSystemBase):
         t0 = time.time()
         env.reset()
+        t1 = time.time()
         k = 0
         while True:
             u = env.U_space.sample()
@@ -212,20 +213,25 @@ def main():
             trunc = k >= n_steps
             if term or trunc:
                 break
-        t1 = time.time()
-        Dtwall = t1 - t0
+        t2 = time.time()
+        dimY = y.shape[-1]
+        dimU = u.shape[-1]
+        Dtwall = t2 - t0
         Dtsim = k * dt_int * Fs
-        dt_per_step = Dtwall / k
-        secs_est = round(N * n_steps * dt_per_step)
-        y, _s = divmod(secs_est, 60)
-        _h, _m = divmod(y, 60)
+        dt_per_traj = (t1 - t0) + n_steps * (t2 - t1)
+        secs_est = round(N * dt_per_traj)
+        _h, _s = divmod(secs_est, 60)
+        _h, _m = divmod(_h, 60)
         speed_ratio = Dtsim / max(Dtwall, 1e-6)
         print(
             "\n".join(
                 [
-                    f"{env.__class__.__name__} steps {k} for {Dtwall:.3f} s",
-                    f"speed ratio {speed_ratio:.3g}x",
-                    f"sim {N} trajs would take {_h}:{_m}:{_s}",
+                    f"{env.__class__.__name__} dimY={dimY} dimU={dimU}",
+                    f"{k} steps",
+                    f"wall time={Dtwall:.3f}s",
+                    f"sim  time={Dtsim:.3f}s",
+                    f"speed ratio={speed_ratio:.3g}x",
+                    f"therefore sim {N} trajs would take at least {_h}:{_m}:{_s}",
                 ]
             )
         )
