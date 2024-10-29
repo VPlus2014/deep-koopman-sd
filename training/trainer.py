@@ -435,7 +435,7 @@ def main():
 
     assert args.config_dir, "Please provide a config file directory"
     config_fn = Path(args.config_dir).resolve()
-    print(f"config<<{config_fn}")
+    print(f"config<< {config_fn}")
     cfg = RunConfig.load(config_fn)
     cfg_meta = cfg.meta()
     cfg.save(config_fn)
@@ -443,7 +443,7 @@ def main():
     RUNS_DIR = DIR_WS / "outputs"
     DUMP_DIR = RUNS_DIR / f"{cfg.task_head}_{now_str}"
     assert not DUMP_DIR.exists(), f"Task path {DUMP_DIR} already exists"
-    print(f"task>>{DUMP_DIR}")
+    print(f"task>> {DUMP_DIR}")
 
     SUMMARY_DIR = f"{DUMP_DIR}/summary.csv"
     MODEL_DIR = f"{DUMP_DIR}"
@@ -485,7 +485,7 @@ def main():
             with open(model_w_fn, "rb") as fp:
                 # print(fp.read())
                 model.load_state_dict(torch.load(fp))
-            print(f"model<<{model_w_fn}\n")
+            print(f"model<< {model_w_fn}\n")
         except Exception as e:
             print(f"failed to load weights: {e}")
     model.to(dv, dtp)

@@ -54,7 +54,7 @@ def n2name(n: int):
 
 
 def _ou_generator(
-    N: int,
+    batch_size: int,
     n_steps: int,
     lamb: float,  # 漂移速率
     sigma: float,  # 方差速率
@@ -64,7 +64,7 @@ def _ou_generator(
     u_max: np.ndarray,
     rng: np.random.Generator,
 ):
-    u_n = np.clip([u_space.sample() for _ in range(N)], u_min, u_max)
+    u_n = np.clip([u_space.sample() for _ in range(batch_size)], u_min, u_max)
     dimU = np.shape(u_n)[-1]
 
     u_mu = 0.5 * (u_min + u_max * np.ones_like(u_n))  # 长期均值
@@ -73,7 +73,7 @@ def _ou_generator(
     dt_sqrt = np.sqrt(dt)
     results = [u_n]
     for i in range(n_steps - 1):
-        noise = rng.normal(size=(N, dimU)) * (sigma * dt_sqrt)
+        noise = rng.normal(size=(batch_size, dimU)) * (sigma * dt_sqrt)
         u_n = u_n + (u_mu - u_n) * (lamb * dt) + noise
         u_n = np.clip(u_n, u_min, u_max)
         results.append(u_n)
@@ -152,6 +152,7 @@ def gen_data(
     pbar = tqdm(total=n_traj)
     while True:
         stop = False
+        n_new_ = 0
         # 轮询任务列表
         for ie in range(n_envs):
             tsk = tasks[ie]
@@ -165,7 +166,7 @@ def gen_data(
                     Ys.append(ys)
                     Us.append(us)
 
-                    pbar.update()
+                    n_new_ += 1
                     if len(Ys) >= n_traj:
                         stop = True
                         break
@@ -205,6 +206,9 @@ def gen_data(
                 tasks[ie] = tsk
                 n_sub += 1
 
+        if n_new_ > 0:
+            pbar.update(n_new_)
+        pbar.refresh()
         if stop:
             break
         time.sleep(0.001)
@@ -221,7 +225,6 @@ def gen_data(
 def main():
     seed = None
     nenv = 8  # 最大并行环境数
-    use_thread = True  # 是否使用线程池,否则进程池
     n_trajs = 10000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
@@ -233,6 +236,7 @@ def main():
     envcls = DOF6PlaneQuat
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
+    use_thread = True  # 是否使用线程池,否则进程池
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
 
@@ -359,7 +363,7 @@ def main():
 
     data_trn.save(data_path / "train")
     data_val.save(data_path / "val")
-    print(f"data>>{data_path}")
+    print(f"data>> {data_path}")
 
 
 if __name__ == "__main__":
