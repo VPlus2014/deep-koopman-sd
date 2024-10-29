@@ -48,6 +48,7 @@ class DOF6PlaneQuat(DynamicSystemBase):
         self._C_D = 0.3  # drag coefficient
 
         x_max = 200e3  # \approx 200km
+        x0_max = min(10, x_max * 1e-3)
         X_named = OrderedDict(
             [
                 # p_{/e}
@@ -90,6 +91,9 @@ class DOF6PlaneQuat(DynamicSystemBase):
         self._e3 = np.array([0, 0, 1], dtype=dtype)
 
         X0_named = X_named.copy()
+        X0_named["X_e"] = spaces.Box(-x0_max, x0_max, dtype=dtype, seed=seed)
+        X0_named["Y_e"] = spaces.Box(-x0_max, x0_max, dtype=dtype, seed=seed)
+        X0_named["Z_e"] = spaces.Box(-x0_max, x0_max, dtype=dtype, seed=seed)
         X0_named["U"] = spaces.Box(120, 240, dtype=dtype, seed=seed)
         X0_named["V"] = spaces.Box(0, 0, dtype=dtype, seed=seed)
         X0_named["W"] = spaces.Box(0, 0, dtype=dtype, seed=seed)
