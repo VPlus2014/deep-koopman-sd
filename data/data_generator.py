@@ -195,7 +195,7 @@ def main():
     ou_lambda = 0.5  # 漂移速率
     ou_sigma = 0.1  # 方差速率
     envcls = DOF6PlaneQuat
-    u0: np.ndarray = None
+    u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
     add_zeros_u = False  # 是否加入零控制量对照组(gym版无效)
     dtp_sim = np.float64  # 仿真数据类型
@@ -247,7 +247,7 @@ def main():
     oldversion = False
 
     sys_name = dyna.__class__.__name__
-    use_const_control = u0 is not None
+    use_const_control = u_const is not None
     control_suffix = "_" + ("cU" if use_const_control else "rU")
     if add_zeros_u and oldversion:
         control_suffix += "&0"
@@ -260,7 +260,7 @@ def main():
     ).resolve()
 
     if use_const_control:
-        u0 = u0 + np.zeros_like(dyna.X_space.low)
+        u_const = u_const + np.zeros_like(dyna.X_space.low)
     print(f"data>>{data_path}")
 
     if oldversion:
@@ -281,8 +281,8 @@ def main():
             n_steps,
             X0_low=dyna.X0_space.low,
             X0_high=dyna.X0_space.high,
-            U_low=dyna.U_space.low if not use_const_control else u0,
-            U_high=dyna.U_space.high if not use_const_control else u0,
+            U_low=dyna.U_space.low if not use_const_control else u_const,
+            U_high=dyna.U_space.high if not use_const_control else u_const,
             add_zero_u=add_zeros_u and not use_const_control,
             constraint=constraint,
         )
