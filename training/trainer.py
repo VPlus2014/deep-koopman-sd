@@ -154,6 +154,8 @@ class VizProcess:
         model_name: str,
         df_stat: pd.DataFrame,
         model_desc: str = "",
+        i_phx=0,
+        i_phy=1,
     ):
         rng = self._rng
         use_random = self.use_random
@@ -185,6 +187,8 @@ class VizProcess:
 
         clr_trn = "purple"
         clr_val = "grey"
+        clr_CKg = "cyan"
+        clr_CgF = "green"
 
         def minmax2lim(xmin: float, xmax: float, lscale=1.0, hscale=1.1, eps=1e-6):
             xc = (xmin + xmax) * 0.5 + eps
@@ -194,15 +198,44 @@ class VizProcess:
             return xc - xr * lscale, xc + xr * hscale
 
         idx = rng.integers(len(xy_gt)) if use_random else -1
-        #
+
+        # pred&gt in 2 dims for phase
         ax_traj.cla()
         ymin = math.inf
         ymax = -math.inf
         for ys, ls, color, lw, alpha, label in [
-            (xy_gt[idx, :, 0], "--", clr_trn, 2, 0.5, "$X_{1}^\mathrm{gt}$"),
-            (xy_pred[idx, :, 0], "-", clr_trn, 2, 1, "$X_{1}^\mathrm{pred}$"),
-            (xy_gt[idx, :, 1], "--", clr_val, 2, 0.5, "$X_{2}^\mathrm{gt}$"),
-            (xy_pred[idx, :, 1], "-", clr_val, 2, 1, "$X_{2}^\mathrm{pred}$"),
+            (
+                xy_gt[idx, :, i_phx],
+                "-",
+                clr_CgF,
+                2,
+                0.5,
+                rf"$X_{{{i_phx}}}^\mathrm{{gt}}$",
+            ),
+            (
+                xy_pred[idx, :, i_phx],
+                "-",
+                clr_CKg,
+                2,
+                1,
+                rf"$X_{{{i_phx}}}^\mathrm{{pred}}$",
+            ),
+            (
+                xy_gt[idx, :, i_phy],
+                "--",
+                clr_CgF,
+                2,
+                0.5,
+                rf"$X_{{{i_phy}}}^\mathrm{{gt}}$",
+            ),
+            (
+                xy_pred[idx, :, i_phy],
+                "--",
+                clr_CKg,
+                2,
+                1,
+                rf"$X_{{{i_phy}}}^\mathrm{{pred}}$",
+            ),
         ]:
             ax_traj.plot(ys, ls, color=color, linewidth=lw, alpha=alpha, label=label)
             ymin = min(ymin, np.min(ys))
@@ -223,49 +256,52 @@ class VizProcess:
         ax_ko.set_xlabel(r"$\mathcal{Re}(\lambda)$")
         ax_ko.set_ylabel(r"$\mathcal{Im}(\lambda)$")
 
+        # phase portrait
         N_cap = len(xy_gt)
         n_samp = min(n_samp, N_cap)
         idicies = rng.integers(N_cap, size=n_samp) if use_random else range(n_samp)
-        clr_CKg = "cyan"
-        clr_CgF = "green"
         ls_CKg = "--"
         ls_CgF = "-"
         ax_phase.cla()
         for i in idicies:
             ax_phase.plot(
-                xy_gt[i, :, 0],
-                xy_gt[i, :, 1],
+                xy_gt[i, :, i_phx],
+                xy_gt[i, :, i_phy],
                 ls_CgF,
                 color=clr_CgF,
                 linewidth=2,
                 alpha=1.0,
                 label="$\mathcal{C}\circ g\circ F$",
             )
-            ax_phase.scatter(xy_gt[i, 0, 0], xy_gt[i, 0, 1], color=clr_CgF, s=15)
+            ax_phase.scatter(
+                xy_gt[i, 0, i_phx], xy_gt[i, 0, i_phy], color=clr_CgF, s=15
+            )
 
             ax_phase.plot(
-                xy_pred[i, :, 0],
-                xy_pred[i, :, 1],
+                xy_pred[i, :, i_phx],
+                xy_pred[i, :, i_phy],
                 ls_CKg,
                 color=clr_CKg,
                 alpha=0.5,
                 linewidth=2,
                 label="$\mathcal{C}\circ\mathcal{K}\circ g$",
             )
-            ax_phase.scatter(xy_gt[i, 0, 0], xy_gt[i, 0, 1], color=clr_CKg, s=15)
+            ax_phase.scatter(
+                xy_gt[i, 0, i_phx], xy_gt[i, 0, i_phy], color=clr_CKg, s=15
+            )
 
         ax_phase.spines["top"].set_visible(False)
         ax_phase.spines["right"].set_visible(False)
 
-        xmin = min(xy_gt[idicies, :, 0].min(), xy_pred[idicies, :, 0].min())
-        xmax = max(xy_gt[idicies, :, 0].max(), xy_pred[idicies, :, 0].max())
-        ymin = min(xy_gt[idicies, :, 1].min(), xy_pred[idicies, :, 1].min())
-        ymax = max(xy_gt[idicies, :, 1].max(), xy_pred[idicies, :, 1].max())
+        xmin = min(xy_gt[idicies, :, i_phx].min(), xy_pred[idicies, :, i_phx].min())
+        xmax = max(xy_gt[idicies, :, i_phx].max(), xy_pred[idicies, :, i_phx].max())
+        ymin = min(xy_gt[idicies, :, i_phy].min(), xy_pred[idicies, :, i_phy].min())
+        ymax = max(xy_gt[idicies, :, i_phy].max(), xy_pred[idicies, :, i_phy].max())
         ax_phase.set_xlim(*minmax2lim(xmin, xmax))
         ax_phase.set_ylim(*minmax2lim(ymin, ymax))
         ax_phase.set_title("Phase Portrait")
-        ax_phase.set_xlabel(r"$X_1$")
-        ax_phase.set_ylabel(r"$X_2$")
+        ax_phase.set_xlabel(rf"$X_{{{i_phx}}}$")
+        ax_phase.set_ylabel(rf"$X_{{{i_phy}}}$")
         ax_phase.legend()
 
         t_axis = np.asarray(df_stat["iter"])
@@ -495,7 +531,7 @@ def main():
         vp = VizProcess(
             figs_dir=FIGURES_DIR,
             use_gui=cfg.viz_gui,
-            use_itr=cfg.viz_use_itr,
+            use_itr=cfg.viz_save_itr,
             seed=rng.integers(INT32_MAX),
         )
     from torch.nn.utils import clip_grad_value_
@@ -637,6 +673,8 @@ def main():
                         model_name=MODEL_NAME,
                         model_desc=model_desc,
                         df_stat=df4viz,
+                        i_phx=cfg.viz_phase_x_idx,
+                        i_phy=cfg.viz_phase_y_idx,
                     )
 
                 if not use_floyd:

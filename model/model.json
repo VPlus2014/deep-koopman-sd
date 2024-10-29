@@ -20,7 +20,7 @@
         -1
     ],
     "activation": "hrelu",
-    "task_head": "",
+    "task_head": "dof6_18",
     "description": "",
     "weights_name": "/model.pt",
     "epochs": 1000,
@@ -53,6 +53,8 @@
     "viz": true,
     "viz_random": false,
     "viz_gui": false,
-    "viz_use_itr": false,
+    "viz_save_itr": false,
+    "viz_phase_x_idx": 3,
+    "viz_phase_y_idx": 4,
     "use_floyd": false
 }

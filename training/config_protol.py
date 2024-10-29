@@ -84,8 +84,12 @@ class RunConfig:
     """random choice in visualization"""
     viz_gui: bool = True
     """ouput to GUI"""
-    viz_use_itr: bool = False
+    viz_save_itr: bool = False
     """save with iteration number"""
+    viz_phase_x_idx: int = 0
+    """index of the phase variable in x axis"""
+    viz_phase_y_idx: int = 1
+    """index of the phase variable in y axis"""
     use_floyd: bool = False
     """use floydhub"""
 

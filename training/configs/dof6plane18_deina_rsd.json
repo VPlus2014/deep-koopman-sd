@@ -53,6 +53,8 @@
     "viz": true,
     "viz_random": false,
     "viz_gui": false,
-    "viz_use_itr": false,
+    "viz_save_itr": false,
+    "viz_phase_x_idx": 3,
+    "viz_phase_y_idx": 4,
     "use_floyd": false
 }
