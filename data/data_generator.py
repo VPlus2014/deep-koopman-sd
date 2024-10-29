@@ -226,7 +226,7 @@ def gen_data(
 
 def main():
     seed = None
-    nenv = 8  # 最大并行环境数
+    nenv = 64  # 最大并行环境数
     n_trajs = 10000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
@@ -338,7 +338,7 @@ def main():
     else:
         rng = np.random.default_rng(seed)
         INT32_SUP = 1 << 31
-        nenv = min(nenv, os.cpu_count() // 2)  # 限制最大并行环境数
+        nenv = min(nenv, os.cpu_count() - 2)  # 限制最大并行环境数
         envs = [
             envcls(seed=int(rng.integers(INT32_SUP)), dtype=dtp_sim)
             for _ in range(nenv)
