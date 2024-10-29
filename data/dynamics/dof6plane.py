@@ -4,6 +4,10 @@ from numpy import linalg as LA
 from .base import DynamicSystemBase, spaces
 from .mathext import *
 
+_PI = math.pi
+_2PI = _PI
+_PI_HF = _PI * 0.5
+
 
 class DOF6PlaneQuat(DynamicSystemBase):
     """NED dof6 quaternion plane dynamics."""
@@ -48,7 +52,7 @@ class DOF6PlaneQuat(DynamicSystemBase):
         self._C_D = 0.3  # drag coefficient
 
         x_max = 200e3  # \approx 200km
-        x0_max = min(10, x_max * 1e-3)
+        x0_max = min(10.0, x_max * 1e-3)
         X_named = OrderedDict(
             [
                 # p_{/e}
@@ -142,9 +146,27 @@ class DOF6PlaneQuat(DynamicSystemBase):
         assert dotX.shape == x.shape
         return dotX
 
+    def reset(self, seed: int = None) -> np.ndarray:
+        x0 = super().reset(seed)
+
+        # 姿态若表示为四元数/旋转矩阵，则
+        #   初始化时会面临在盒子空间上的低维嵌入问题，随机遍历很难出合法值
+        # 若表示为欧拉角，则
+        #   误差计算需要模 2pi 区间， 且合理性不如 SO3 上的误差
+        #   全姿态仿真面临万向节死锁
+        # 随机欧拉角->四元数
+        r = 1e-1
+        w = self._rng.random(size=3) * r
+        rpy_deg = [-180, -90, -180] + (0.5 + w) * [360, 180, 360]
+        rpy_deg = rpy_deg.astype(np.int_)
+        Q_eb = rpy2quat(*rpy_deg, degrees=True)
+
+        x0[-4:] = Q_eb
+        return x0
+
     @staticmethod
-    def speed_is_too_low(x: np.ndarray) -> bool:
-        return LA.norm(x[:3]) < 0.1
+    def speed_is_too_low(X: np.ndarray) -> bool:
+        return LA.norm(X[:3]) < 0.1
 
     @staticmethod
     def demo():

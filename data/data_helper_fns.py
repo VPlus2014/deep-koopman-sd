@@ -74,8 +74,10 @@ class Data_Generator:
         fs: int = 1,
         dtype=np.float_,
         seed=None,
+        func_reset: Callable[[], np.ndarray] = None,
     ):
         self.gradient = gradient
+        self._func_reset = func_reset
         self._dt_int = dt_int
         self._fs = fs
         assert 0 < fs and math.isfinite(fs), "Sampling frequency should be positive"
@@ -151,7 +153,12 @@ class Data_Generator:
         constraint: Callable[[np.ndarray], float],
     ):
         while True:
-            x0 = np.clip(X0_space.sample(), X0_low, X0_high)
+            if self._func_reset is not None:
+                x0 = self._func_reset()
+            else:
+                x0 = X0_space.sample()
+
+            x0 = np.clip(x0, X0_low, X0_high)
             if self._all_subject_to([x0], constraint):
                 return x0
 

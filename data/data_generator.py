@@ -70,6 +70,7 @@ def main():
         dt_int=dt_int,
         fs=fs,
         seed=seed,
+        func_reset=dyna.reset,
     )
 
     use_const_control = u0 is not None

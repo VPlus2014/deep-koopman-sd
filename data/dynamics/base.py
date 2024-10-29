@@ -20,10 +20,10 @@ class DynamicSystemBase(abc.ABC):
         """状态方程"""
         raise NotImplementedError
 
-    def __init__(self, seed: int = None,dtype=np.float_):
+    def __init__(self, seed: int = None, dtype=np.float_):
         self._seed = seed
+        self._rng, seed = seeding.np_random(self._seed)
         self.dtype = dtype
-        self._rng, seed = seeding.np_random(seed)
 
     @property
     def X0_space(self) -> spaces.Box:
@@ -45,7 +45,17 @@ class DynamicSystemBase(abc.ABC):
     def U_space(self) -> spaces.Box:
         """控制输入空间"""
         return self._U_space
-    
+
+    @abc.abstractmethod
+    def reset(self, seed: int = None) -> np.ndarray:
+        """产生合法初始状态"""
+        if seed is not None:  # 重新初始化随机数种子(用于复刻初始状态)
+            self._seed = seed
+            self._rng, seed = seeding.np_random(self._seed)
+        return self.X0_space.sample()
+
     @classmethod
     def demo(cls):
-        print(f"Warning: {cls if isinstance(cls, type) else cls.__class__.__name__}.{cls.demo.__name__} Not implemented")
+        print(
+            f"Warning: {cls if isinstance(cls, type) else cls.__class__.__name__}.{cls.demo.__name__} Not implemented"
+        )
