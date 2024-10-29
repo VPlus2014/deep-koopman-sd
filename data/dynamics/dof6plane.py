@@ -149,6 +149,13 @@ class DOF6PlaneQuat(DynamicSystemBase):
     def reset(self, seed: int = None) -> np.ndarray:
         x0 = super().reset(seed)
 
+        ntry = 0
+        while x0 not in self.X_space:
+            x0 = self.X0_space.sample()
+            ntry += 1
+            if ntry == 10000:
+                print(f"Warning: sample initial state {ntry} times")
+
         # 姿态若表示为四元数/旋转矩阵，则
         #   初始化时会面临在盒子空间上的低维嵌入问题，随机遍历很难出合法值
         # 若表示为欧拉角，则

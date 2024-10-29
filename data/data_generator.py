@@ -52,7 +52,7 @@ def n2name(n: int):
 
 
 def main():
-    seed = 123
+    seed = None
     N = 10000
     n_steps = 50
     dt_int = 1e-2
