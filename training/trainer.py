@@ -229,6 +229,9 @@ class VizProcess:
                 alpha=0.5,
                 label=formal_Ckg,
             )
+            #
+            _ys_gt: np.ndarray = xy_gt[..., i_dim]
+            _ys_pred: np.ndarray = xy_pred[..., i_dim]
             ymin = min(_ys_pred.min(), _ys_gt.min())
             ymax = max(_ys_pred.max(), _ys_gt.max())
             ax.set_ylim(*minmax2lim(ymin, ymax))
@@ -244,8 +247,8 @@ class VizProcess:
         ax_ko.cla()
         ax_ko.scatter(np.real(w), np.imag(w), marker="+", color="purple", s=30)
         ax_ko.set_title("Koopman Eigenvalues")
-        ax_ko.set_xlabel(r"$\mathcal{Re}(\lambda)$")
-        ax_ko.set_ylabel(r"$\mathcal{Im}(\lambda)$")
+        ax_ko.set_xlabel(r"Re$(\lambda)$")
+        ax_ko.set_ylabel(r"Im$(\lambda)$")
 
         # phase portrait
         N_cap = len(xy_gt)
@@ -284,10 +287,11 @@ class VizProcess:
         ax_phase.spines["top"].set_visible(False)
         ax_phase.spines["right"].set_visible(False)
 
-        xmin = min(xy_gt[idicies, :, i_phx].min(), xy_pred[idicies, :, i_phx].min())
-        xmax = max(xy_gt[idicies, :, i_phx].max(), xy_pred[idicies, :, i_phx].max())
-        ymin = min(xy_gt[idicies, :, i_phy].min(), xy_pred[idicies, :, i_phy].min())
-        ymax = max(xy_gt[idicies, :, i_phy].max(), xy_pred[idicies, :, i_phy].max())
+        idicies2 = slice(None, None)
+        xmin = min(xy_gt[idicies2, :, i_phx].min(), xy_pred[idicies2, :, i_phx].min())
+        xmax = max(xy_gt[idicies2, :, i_phx].max(), xy_pred[idicies2, :, i_phx].max())
+        ymin = min(xy_gt[idicies2, :, i_phy].min(), xy_pred[idicies2, :, i_phy].min())
+        ymax = max(xy_gt[idicies2, :, i_phy].max(), xy_pred[idicies2, :, i_phy].max())
         ax_phase.set_xlim(*minmax2lim(xmin, xmax))
         ax_phase.set_ylim(*minmax2lim(ymin, ymax))
         ax_phase.set_title("Phase Portrait")

@@ -56,32 +56,44 @@ class DynamicSystemBase(abc.ABC):
         """获取观测值"""
         return x
 
+    def _get_state(self) -> np.ndarray:
+        """获取状态"""
+        return self._x.copy()
+
     def _is_terminal(self, x: np.ndarray) -> bool:
         """判断是否满足终止条件"""
         return False
 
-    def reset(self, seed: int = None) -> np.ndarray:
-        """产生合法初始状态"""
+    def reset(self, *, seed: int = None, x0: np.ndarray = None) -> np.ndarray:
+        """加载/随机产生合法初始状态, 并返回观测值"""
         if seed is not None:  # 重新初始化随机数种子(用于复刻初始状态)
             self._seed = seed
             self._np_random, seed = seeding.np_random(self._seed)
+            self.X0_space.seed(seed)
+            self.X_space.seed(seed)
+            self.U_space.seed(seed)
+
         ntry = 0
-        while True:
-            x0 = self.X0_space.sample()
-            ntry += 1
-            if ntry == 1000:
-                print(
-                    f"Warning: {type(self).__name__}.reset() reset too many times, try again"
-                )
-            if not self.X0_space.contains(x0):
-                continue
-            x0 = self._purify_X_on_reset(x0)
-            if self._is_terminal(x0):
-                continue
-            break
+        if x0 is None:
+            while True:
+                x0 = self.X0_space.sample()
+                ntry += 1
+                if ntry == 1000:
+                    print(
+                        f"Warning: {type(self).__name__}.reset() reset too many times, try again"
+                    )
+                if not self.X0_space.contains(x0):
+                    x0 = None
+                    continue
+                x0 = self._purify_X_on_reset(x0)
+                if self._is_terminal(x0):
+                    continue
+                break
+        assert self.X0_space.contains(x0), f"Invalid initial state {x0}"
+        assert not self._is_terminal(x0), f"Initial state {x0} is terminal"
         self._t = 0.0
         self._x = x0
-        y = self._get_obs(x0)
+        y = self._get_obs(x0).copy()
         return y
 
     def _purify_X_on_reset(self, X: np.ndarray) -> np.ndarray:
@@ -122,7 +134,7 @@ class DynamicSystemBase(abc.ABC):
 
         self._t = t2
         self._x = x2
-        y2 = self._get_obs(x2)
+        y2 = self._get_obs(x2).copy()
         if self._is_terminal(x2):
             terminated = True
         return y2, terminated

@@ -30,6 +30,14 @@ class KoopmanData:
         idx = int(len(xs) * ratio)
         train_x, train_u = xs[:idx], us[:idx]
         test_x, test_u = xs[idx:], us[idx:]
+        # 为了处理带控制量对照组的情形,在每个数据子集里每个初始状态都含全部不同的控制量
+        if len(xs.shape) > 3:
+            xs_newshape = (-1, *xs.shape[-2:])
+            us_newshape = (-1, *us.shape[-2:])
+            train_x = train_x.reshape(xs_newshape)
+            train_u = train_u.reshape(us_newshape)
+            test_x = test_x.reshape(xs_newshape)
+            test_u = test_u.reshape(us_newshape)
         return (
             KoopmanData(train_x, train_u),
             KoopmanData(test_x, test_u),

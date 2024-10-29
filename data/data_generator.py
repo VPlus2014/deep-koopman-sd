@@ -82,20 +82,30 @@ def _ou_generator(
     return np.swapaxes(results, 0, 1)
 
 
-def gen_traj(
-    env: DynamicSystemBase, us: np.ndarray, Fs: int, dt_int: int, Ffix: int = None
+def _gen_trajs(
+    env: DynamicSystemBase,
+    us: List[np.ndarray],  # (B,T,dimU)
+    Fs: int,
+    dt_int: int,
+    Ffix: int = None,
+    seed: int = None,  # 随机种子
+    x0: np.ndarray = None,  # 初始状态
 ):
+    """从单一初始状态生成按不同控制量生成不同轨迹"""
+    yss = []
     term = False
-    Ts = us.shape[0]
-    y0 = env.reset()
-    ys = [y0]
-    for k in range(Ts):
-        y1, term = env.step(us[k], dt=dt_int, Fs=Fs, Ffix=Ffix)
-        ys.append(y1)
-        if term:
-            break
-    ys = np.asarray(ys)
-    return ys, us
+    for us_ in us:
+        Ts = us_.shape[0]
+        y0 = env.reset(seed=seed, x0=x0)
+        ys = [y0]
+        for k in range(Ts):
+            y1, term = env.step(us_[k], dt=dt_int, Fs=Fs, Ffix=Ffix)
+            ys.append(y1)
+            if term:
+                break
+        ys = np.asarray(ys)
+        yss.append(ys)
+    return yss, us
 
 
 def gen_data(
@@ -109,16 +119,26 @@ def gen_data(
     ou_sigma: float = 0.1,  # 方差速率
     u_min: np.ndarray = None,
     u_max: np.ndarray = None,
+    add_zeros_u: bool = True,
     n_workers=None,  # 并行线程/进程数
     use_thread=True,  # 是否使用线程池
+    seed: int = None,
 ):
     """用一组给定环境生成指定时长的合法轨迹"""
     Fs = Fs or 1
     Ffix = Ffix or Fs
+    rng = np.random.default_rng(seed)
+    INT32_MAX = np.iinfo(np.int32).max
+    if add_zeros_u:
+        assert envs[0].U_space.contains(
+            np.zeros_like(envs[0].U_space.low)
+        ), "zero control is not valid in env"
     n_envs = len(envs)
-    Ys = []  # (N, T+1, dimY)
-    Us = []  # (N, T, dimU)
-    tasks: List[Optional[Future[Tuple[np.ndarray, np.ndarray]]]] = [None] * n_envs
+    Ys = []  # (N,M,T+1,dimY)
+    Us = []  # (N,M,T,dimU)
+    tasks: List[Optional[Future[Tuple[List[np.ndarray], List[np.ndarray]]]]] = [
+        None
+    ] * n_envs
 
     max_workers = os.cpu_count()
     n_workers = n_workers or max_workers
@@ -141,7 +161,7 @@ def gen_data(
                 simrst = tsk.result()
                 ys, us = simrst
                 #
-                if len(ys) == Ts + 1:
+                if all([len(ys_) == Ts + 1 for ys_ in ys]):
                     Ys.append(ys)
                     Us.append(us)
 
@@ -165,8 +185,23 @@ def gen_data(
                     u_min=u_min_,
                     u_max=u_max_,
                     rng=env._np_random,
+                )  # (1,T,dimU)
+                if add_zeros_u:
+                    us = np.concatenate([us, np.zeros_like(us)], axis=0)  # (2,T,dimU)
+
+                env = envs[ie]
+                env.reset(seed=seed)  # 生成初始状态
+                x0_ = env._get_state().copy()
+                tsk = tpe.submit(
+                    _gen_trajs,
+                    env,
+                    us,
+                    Fs=Fs,
+                    dt_int=dt_int,
+                    Ffix=Ffix,
+                    seed=seed,
+                    x0=x0_,
                 )
-                tsk = tpe.submit(gen_traj, envs[ie], us[0], Fs=Fs, dt_int=dt_int)
                 tasks[ie] = tsk
                 n_sub += 1
 
@@ -185,10 +220,11 @@ def gen_data(
 
 def main():
     seed = None
-    nenv = 64  # 最大并行环境数
-    use_thread = False  # 是否使用线程池
-    n_trajs = 100000  # 总轨迹数
-    n_steps = 50  # 控制步数
+    nenv = 8  # 最大并行环境数
+    use_thread = True  # 是否使用线程池,否则进程池
+    n_trajs = 10000  # 总轨迹数
+    add_zeros_u = True  # 是否加入零控制量对照组
+    n_steps = 50  # 控制输入步数
     Fs = 200  # 采样频率
     dt_int = 1e-3  # 积分步长
     Ffix = 10  # 积分修正间隔
@@ -197,7 +233,6 @@ def main():
     envcls = DOF6PlaneQuat
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
-    add_zeros_u = False  # 是否加入零控制量对照组(gym版无效)
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
 
@@ -205,7 +240,7 @@ def main():
 
     def _env_test(env: DynamicSystemBase):
         ts_traj = []
-        n_trajs_tst = 5
+        n_trajs_tst = 2
         pbar = tqdm(total=n_trajs_tst)
         while True:
             t0 = time.time()
@@ -228,13 +263,17 @@ def main():
         dimU = u.shape[-1]
         Dtwall = np.mean(ts_traj)
         Dtsim = k * dt_int * Fs
-        secs_est = math.ceil(n_trajs * Dtwall)
-        _h, _s = divmod(secs_est, 60)
+        secs_est = n_trajs * Dtwall
+        if add_zeros_u:
+            secs_est *= 2
+        _h, _s = divmod(math.ceil(secs_est), 60)
         _h, _m = divmod(_h, 60)
         speed_ratio = Dtsim / max(Dtwall, 1e-6)
 
         scalar_nbytes = np.dtype(dtp_data).itemsize
         nbytes_est = n_trajs * (dimY + (dimU + dimY) * n_steps) * scalar_nbytes
+        if add_zeros_u:
+            nbytes_est *= 2
         data_size_est = n2name(nbytes_est)
         print(
             "\n".join(
@@ -253,7 +292,7 @@ def main():
     sys_name = dyna.__class__.__name__
     use_const_control = u_const is not None
     control_suffix = "_" + ("cU" if use_const_control else "rU")
-    if add_zeros_u and oldversion:
+    if add_zeros_u:
         control_suffix += "&0"
 
     Nname = n2name(n_trajs)
@@ -293,7 +332,7 @@ def main():
     else:
         rng = np.random.default_rng(seed)
         INT32_SUP = 1 << 31
-        nenv = min(nenv, os.cpu_count())  # 限制最大并行环境数
+        nenv = min(nenv, os.cpu_count() // 2)  # 限制最大并行环境数
         envs = [
             envcls(seed=int(rng.integers(INT32_SUP)), dtype=dtp_sim)
             for _ in range(nenv)
@@ -307,8 +346,11 @@ def main():
             Ffix=Ffix,
             ou_lambda=ou_lambda,
             ou_sigma=ou_sigma,
+            u_min=dyna.U_space.low if not use_const_control else u_const,
+            u_max=dyna.U_space.high if not use_const_control else u_const,
             n_workers=nenv,
             use_thread=use_thread,
+            add_zeros_u=add_zeros_u,
         )
 
     data.xs = data.xs.astype(dtp_data)

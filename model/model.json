@@ -3,9 +3,9 @@
     "network": "deina_sd",
     "enc_x_shape": [
         18,
-        50,
-        50,
-        20
+        100,
+        100,
+        36
     ],
     "enc_u_shape": [
         4,
@@ -19,13 +19,13 @@
         50,
         -1
     ],
-    "activation": "prelu",
+    "activation": "hrelu",
     "task_head": "dof6_18",
     "description": "",
     "weights_name": "/model.pt",
     "epochs": 1000,
     "batch_size": 128,
-    "lr": 0.001,
+    "lr": 0.01,
     "lr_sch_step": 10,
     "lr_sch_gamma": 0.618,
     "weight_decay": 1e-06,
@@ -48,13 +48,13 @@
     "lw_h_inf_2": 0.1,
     "lw_l1reg": 0,
     "lw_l2reg": 0.1,
-    "use_huber": false,
+    "use_huber": true,
     "verbose": true,
     "viz": true,
     "viz_random": false,
     "viz_gui": false,
     "viz_save_itr": false,
-    "viz_phase_x_idx": 3,
-    "viz_phase_y_idx": 4,
+    "viz_phase_x_idx": 0,
+    "viz_phase_y_idx": 1,
     "use_floyd": false
 }
