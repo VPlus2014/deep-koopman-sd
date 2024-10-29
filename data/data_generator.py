@@ -186,6 +186,7 @@ def gen_data(
 def main():
     seed = None
     nenv = 64  # 最大并行环境数
+    use_thread = False  # 是否使用线程池
     N = 10000
     n_steps = 50  # 控制步数
     Fs = 200  # 采样频率
@@ -287,6 +288,7 @@ def main():
             ou_lambda=ou_lambda,
             ou_sigma=ou_sigma,
             n_workers=nenv,
+            use_thread=use_thread,
         )
     print(f"data: {data.xs.shape}")
     data_trn, data_val = data.train_test_split(0.8)

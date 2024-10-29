@@ -175,8 +175,15 @@ class DOF6PlaneQuat(DynamicSystemBase):
         X[-4:] = Q_eb
         return X
 
-    def _is_terminal(self, x: np.ndarray) -> bool:
-        return self.speed_is_too_low(x)
+    def _is_terminal(self, X: np.ndarray) -> bool:
+        return self.speed_is_too_low(X)
+
+    def _get_obs(self, X: np.ndarray) -> np.ndarray:
+        """为了方便计算旋转误差,将四元数转为旋转矩阵, 因为 |U-V|_F=|U^T V-I|_F"""
+        X_, Q_eb = X[:-4], X[-4:]
+        T_eb = quat2mat(Q_eb)
+        y = np.concatenate([X_, T_eb.flatten()])
+        return y
 
     @staticmethod
     def speed_is_too_low(X: np.ndarray) -> bool:
