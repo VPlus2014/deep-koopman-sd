@@ -187,14 +187,6 @@ def rpy2mat_inv(Teb: np.ndarray, roll_ref_rad: float = 0.0, eps=1e-6) -> np.ndar
 
 def rot_demo():
     rng = np.random.default_rng(None)
-    shapehead = (64, 50)
-    rs = rng.random(size=shapehead) * _2PI
-    ps = rng.random(size=shapehead) * _PI
-    ys = rng.random(size=shapehead) * _2PI
-    vs = rng.random(size=(*shapehead, 3))
-    q = rpy2quat(rs, ps, ys)
-    v_r1 = quat_rot(q, vs)
-    print(v_r1.shape)
 
     dr = 1e-2
     dp = 1e-2
@@ -202,7 +194,7 @@ def rot_demo():
     rs_deg = _bkbn.deg2rad(_bkbn.arange(-180, 180, dr))
     ps_deg = _bkbn.deg2rad(_bkbn.linspace(-90, 90, int(180 / dp)))
     ys_deg = _bkbn.deg2rad(_bkbn.arange(-180, 180, dy))
-    batchsize = 2048
+    batchsize = 4096
 
     err_tol = 1e-12
     err_eul_max = 0.0
@@ -212,15 +204,17 @@ def rot_demo():
     def _proc(rpy_s: list):
         nonlocal err_eul_max, err_T_max, err_TQ_max
         batchsize = len(rpy_s)
-        rpy_t = _bkbn.asarray(rpy_s)
-        assert rpy_t.shape == (batchsize, 3)
+        shphead = [batchsize]
+        rpy_t = _bkbn.asarray(rpy_s).reshape(*shphead, 3)  # (N,1,3)
         rpy_s.clear()
 
-        Teb = rpy2mat(rpy_t[:, 0], rpy_t[:, 1], rpy_t[:, 2])
-        rs_p, ps_p, ys_p = rpy2mat_inv(Teb, rpy_t[:, 0])
+        Teb = rpy2mat(rpy_t[..., 0], rpy_t[..., 1], rpy_t[..., 2])
+        rs_p, ps_p, ys_p = rpy2mat_inv(Teb, rpy_t[..., 0])
 
         rpy_p = _bkbn.stack([rs_p, ps_p, ys_p], axis=-1)
-        assert rpy_p.shape == (batchsize, 3)
+        assert (
+            rpy_p.shape == rpy_t.shape
+        ), f"expected rpy shape {rpy_t.shape}, but got {rpy_p.shape}"
 
         # 欧拉角误差测试
         errs_eul = modrad(rpy_t - rpy_p, -_PI)
@@ -236,7 +230,7 @@ def rot_demo():
             msg.append(f"err={errs_eul_btch_ub:.6g}")
             print("\n".join(msg))
 
-        Qeb = rpy2quat(rpy_t[:, 0], rpy_t[:, 1], rpy_t[:, 2])
+        Qeb = rpy2quat(rpy_t[..., 0], rpy_t[..., 1], rpy_t[..., 2])
         TebQ = quat2mat(Qeb)
         # 矩阵一致性测试
         errs_T = LA.norm(Teb - TebQ, axis=(-2, -1))
@@ -247,11 +241,12 @@ def rot_demo():
             err_T_max = err_T_btch_ub
 
         # 向量旋转测试
-        _1s = _bkbn.ones([batchsize, 1])
-        e1 = _1s * _e1  # (n,3)
+        _1s = _bkbn.ones([*shphead, 1])
+        e1 = _1s * _e1  # (*bshp,3)
         e2 = _1s * _e2
         e3 = _1s * _e3
         tst_vecs = [e1, e2, e3]
+        assert tst_vecs[0].shape == rpy_t.shape
         tst_vecs4mat = [v.reshape(*v.shape, 1) for v in tst_vecs]  # (...,3,1)
         Ys_TebQ = _bkbn.stack([TebQ @ v for v in tst_vecs4mat], axis=-3).squeeze(-1)
         Ys_Qeb = _bkbn.stack([quat_rot(Qeb, v) for v in tst_vecs], axis=-2)
