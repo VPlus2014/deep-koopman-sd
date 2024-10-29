@@ -125,15 +125,16 @@ class VizProcess:
     ):
         fig = plt.figure(figsize=(24, 16), dpi=300, facecolor="white")
         self.fig = fig
-        self.ax_traj = fig.add_subplot(331, frameon=False)
-        self.ax_phase = fig.add_subplot(332, frameon=False)
-        self.ax_ko = fig.add_subplot(333, frameon=False)
+        self.ax_x = fig.add_subplot(331, frameon=False)
+        self.ax_y = fig.add_subplot(332, frameon=False)
+        self.ax_phase = fig.add_subplot(333, frameon=False)
+        self.ax_ko = fig.add_subplot(336, frameon=False)
         self.ax_x_mse = fig.add_subplot(334, frameon=False)
         self.ax_h_mse = fig.add_subplot(335, frameon=False)
-        self.ax_reg = fig.add_subplot(336, frameon=False)
+        self.ax_reg = fig.add_subplot(339, frameon=False)
         self.ax_x_inf = fig.add_subplot(337, frameon=False)
         self.ax_h_inf = fig.add_subplot(338, frameon=False)
-        self.ax_lr = fig.add_subplot(339, frameon=False)
+        self.ax_lr = None  # fig.add_subplot(339, frameon=False)
 
         plt.rcParams.update({"font.size": 10})
         if use_gui:
@@ -175,7 +176,8 @@ class VizProcess:
         # import pdb; pdb.set_trace()
 
         fig = self.fig
-        ax_traj = self.ax_traj
+        ax_x = self.ax_x
+        ax_y = self.ax_y
         ax_phase = self.ax_phase
         ax_ko = self.ax_ko
         ax_x_mse = self.ax_x_mse
@@ -189,8 +191,10 @@ class VizProcess:
         clr_val = "grey"
         clr_CKg = "cyan"
         clr_CgF = "green"
+        formal_Ckg = r"$\mathcal{C}\circ\mathcal{K}\circ g$"
+        formal_CgF = r"$\mathcal{C}\circ g\circ F$"
 
-        def minmax2lim(xmin: float, xmax: float, lscale=1.0, hscale=1.1, eps=1e-6):
+        def minmax2lim(xmin: float, xmax: float, lscale=1.1, hscale=1.1, eps=1e-6):
             xc = (xmin + xmax) * 0.5 + eps
             xr = abs(xmax - xmin) * 0.5
             if xr == 0:
@@ -200,51 +204,38 @@ class VizProcess:
         idx = rng.integers(len(xy_gt)) if use_random else -1
 
         # pred&gt in 2 dims for phase
-        ax_traj.cla()
-        ymin = math.inf
-        ymax = -math.inf
-        for ys, ls, color, lw, alpha, label in [
-            (
-                xy_gt[idx, :, i_phx],
-                "-",
-                clr_CgF,
-                2,
-                0.5,
-                rf"$X_{{{i_phx}}}^\mathrm{{gt}}$",
-            ),
-            (
-                xy_pred[idx, :, i_phx],
-                "-",
-                clr_CKg,
-                2,
-                1,
-                rf"$X_{{{i_phx}}}^\mathrm{{pred}}$",
-            ),
-            (
-                xy_gt[idx, :, i_phy],
-                "--",
-                clr_CgF,
-                2,
-                0.5,
-                rf"$X_{{{i_phy}}}^\mathrm{{gt}}$",
-            ),
-            (
-                xy_pred[idx, :, i_phy],
-                "--",
-                clr_CKg,
-                2,
-                1,
-                rf"$X_{{{i_phy}}}^\mathrm{{pred}}$",
-            ),
+        ax_y.cla()
+        for ax, i_dim in [
+            (ax_x, i_phx),
+            (ax_y, i_phy),
         ]:
-            ax_traj.plot(ys, ls, color=color, linewidth=lw, alpha=alpha, label=label)
-            ymin = min(ymin, np.min(ys))
-            ymax = max(ymax, np.max(ys))
-        ax_traj.set_ylim(*minmax2lim(ymin, ymax))
-        ax_traj.set_title("Trajectories")
-        ax_traj.set_xlabel("Time Steps")
-        ax_traj.set_ylabel(r"$\mathbf{x}$")
-        ax_traj.legend()
+            ax.cla()
+
+            _ys_gt = xy_gt[idx, :, i_dim]
+            _ys_pred = xy_pred[idx, :, i_dim]
+            ax.plot(
+                _ys_gt,
+                ls="-",
+                color=clr_CgF,
+                linewidth=2,
+                alpha=0.8,
+                label=formal_CgF,
+            )
+            ax.plot(
+                _ys_pred,
+                ls="--",
+                color=clr_CKg,
+                linewidth=2,
+                alpha=0.5,
+                label=formal_Ckg,
+            )
+            ymin = min(_ys_pred.min(), _ys_gt.min())
+            ymax = max(_ys_pred.max(), _ys_gt.max())
+            ax.set_ylim(*minmax2lim(ymin, ymax))
+            ax.set_title(f"Trajectories in dim {i_dim}")
+            ax.set_xlabel("Sim Time")
+            ax.set_ylabel(rf"$\mathbf{{X}}_{i_dim}$")
+            ax.legend()
 
         if len(kos.shape) == 3:
             w, v = LA.eig(kos[idx])
@@ -270,7 +261,7 @@ class VizProcess:
                 ls_CgF,
                 color=clr_CgF,
                 linewidth=2,
-                alpha=1.0,
+                alpha=0.8,
                 label="$\mathcal{C}\circ g\circ F$",
             )
             ax_phase.scatter(
@@ -339,7 +330,8 @@ class VizProcess:
             ax.set_title(title)
             ax.set_xlabel(xlabel)
             ax.set_ylabel(ylabel)
-            ax.set_ylim(*minmax2lim(ymin, ymax))
+            lscale = 1.0 if yscale == "log" else 1.1
+            ax.set_ylim(*minmax2lim(ymin, ymax, lscale))
             ax.set_yscale(yscale)
             ax.legend()
 
@@ -377,10 +369,10 @@ class VizProcess:
             yscale="linear",
         )
 
-        ax_lr.cla()
-        ax_lr.plot(t_axis, lrs, color=clr_trn, linewidth=2)
-        ax_lr.set_title("Learning Rate")
-        ax_lr.set_xlabel("Iterations")
+        # ax_lr.cla()
+        # ax_lr.plot(t_axis, lrs, color=clr_trn, linewidth=2)
+        # ax_lr.set_title("Learning Rate")
+        # ax_lr.set_xlabel("Iterations")
 
         fig.tight_layout()
         fig.suptitle("{}:\n{}".format(model_name, model_desc))

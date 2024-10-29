@@ -265,7 +265,7 @@ def main():
 
     if use_const_control:
         u_const = u_const + np.zeros_like(dyna.X_space.low)
-    print(f"data>>{data_path}")
+    print(f"data is to be saved to {data_path}")
 
     if oldversion:
         constraint = lambda x: not dyna.X_space.contains(
@@ -317,6 +317,7 @@ def main():
 
     data_trn.save(data_path / "train")
     data_val.save(data_path / "val")
+    print(f"data>>{data_path}")
 
 
 if __name__ == "__main__":
