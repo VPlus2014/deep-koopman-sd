@@ -204,7 +204,7 @@ def rot_demo():
     def _proc(rpy_s: list):
         nonlocal err_eul_max, err_T_max, err_TQ_max
         batchsize = len(rpy_s)
-        shphead = [batchsize]
+        shphead = [batchsize, 1]  # 张量运算测试
         rpy_t = _bkbn.asarray(rpy_s).reshape(*shphead, 3)  # (N,1,3)
         rpy_s.clear()
 
