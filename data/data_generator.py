@@ -187,7 +187,7 @@ def main():
     seed = None
     nenv = 64  # 最大并行环境数
     use_thread = False  # 是否使用线程池
-    N = 10000
+    n_trajs = 100000  # 总轨迹数
     n_steps = 50  # 控制步数
     Fs = 200  # 采样频率
     dt_int = 1e-3  # 积分步长
@@ -203,47 +203,51 @@ def main():
 
     dyna = envcls(seed=seed, dtype=dtp_sim)
 
-    def _demo(env: DynamicSystemBase):
-        t0 = time.time()
-        env.reset()
-        t1 = time.time()
-        k = 0
+    def _env_test(env: DynamicSystemBase):
+        ts_traj = []
+        n_trajs_tst = 5
+        pbar = tqdm(total=n_trajs_tst)
         while True:
-            u = env.U_space.sample()
-            y, term = env.step(u, dt=dt_int, Fs=Fs, Ffix=Ffix)
-            k += 1
-            trunc = k >= n_steps
-            if term or trunc:
-                break
-        t2 = time.time()
+            t0 = time.time()
+            env.reset()
+            k = 0
+            while True:
+                u = env.U_space.sample()
+                y, term = env.step(u, dt=dt_int, Fs=Fs, Ffix=Ffix)
+                k += 1
+                trunc = k >= n_steps
+                if term or trunc:
+                    break
+            t2 = time.time()
+            if k == n_steps:  # 合法轨迹
+                ts_traj.append(t2 - t0)
+                pbar.update()
+                if len(ts_traj) >= n_trajs_tst:
+                    break
         dimY = y.shape[-1]
         dimU = u.shape[-1]
-        Dtwall = t2 - t0
+        Dtwall = np.mean(ts_traj)
         Dtsim = k * dt_int * Fs
-        dt_per_traj = (t1 - t0) + n_steps * (t2 - t1)
-        secs_est = round(N * dt_per_traj)
+        secs_est = math.ceil(n_trajs * Dtwall)
         _h, _s = divmod(secs_est, 60)
         _h, _m = divmod(_h, 60)
         speed_ratio = Dtsim / max(Dtwall, 1e-6)
 
         scalar_nbytes = np.dtype(dtp_data).itemsize
-        nbytes_est = N * (dimY + (dimU, dimY) * n_steps) * scalar_nbytes
+        nbytes_est = n_trajs * (dimY + (dimU + dimY) * n_steps) * scalar_nbytes
         data_size_est = n2name(nbytes_est)
         print(
             "\n".join(
                 [
-                    f"{env.__class__.__name__} dimY={dimY} dimU={dimU}",
-                    f"{k} steps",
-                    f"wall time={Dtwall:.3f}s",
-                    f"sim  time={Dtsim:.3f}s",
+                    f"{env.__class__.__name__} dimY={dimY} dimU={dimU} n_steps={n_steps}",
                     f"speed ratio={speed_ratio:.3g}x",
-                    f"therefore sim {N} trajs would take at least {_h}:{_m}:{_s}",
-                    f"data size={data_size_est} Bytes",
+                    f"sim {n_trajs} trajs would take at least {_h}:{_m}:{_s}",
+                    f"total data size={data_size_est} Bytes",
                 ]
             )
         )
 
-    _demo(dyna)
+    _env_test(dyna)
     oldversion = False
 
     sys_name = dyna.__class__.__name__
@@ -252,7 +256,7 @@ def main():
     if add_zeros_u and oldversion:
         control_suffix += "&0"
 
-    Nname = n2name(N)
+    Nname = n2name(n_trajs)
     data_head = f"{sys_name}{control_suffix}_Fs{Fs}_dt{dt_int:4g}_{Nname}"
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     data_path = (
@@ -277,7 +281,7 @@ def main():
             func_reset=dyna.reset,
         )
         data = generator.generate(
-            N,
+            n_trajs,
             n_steps,
             X0_low=dyna.X0_space.low,
             X0_high=dyna.X0_space.high,
@@ -296,7 +300,7 @@ def main():
         ]
         data = gen_data(
             envs=envs,
-            n_traj=N,
+            n_traj=n_trajs,
             Ts=n_steps,
             dt_int=dt_int,
             Fs=Fs,

@@ -20,7 +20,7 @@
         -1
     ],
     "activation": "hrelu",
-    "task_head": "",
+    "task_head": "dof6_18",
     "description": "",
     "weights_name": "/model.pt",
     "epochs": 1000,
