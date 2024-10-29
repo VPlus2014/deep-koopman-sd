@@ -1,4 +1,3 @@
-from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 import math
 import os
 import time
@@ -127,8 +126,8 @@ def gen_data(
     """用一组给定环境生成指定时长的合法轨迹"""
     Fs = Fs or 1
     Ffix = Ffix or Fs
-    rng = np.random.default_rng(seed)
-    INT32_MAX = np.iinfo(np.int32).max
+    np_rng = np.random.default_rng(seed)
+    INT32_MAX = int(np.iinfo(np.int32).max)
     if add_zeros_u:
         assert envs[0].U_space.contains(
             np.zeros_like(envs[0].U_space.low)
@@ -136,17 +135,23 @@ def gen_data(
     n_envs = len(envs)
     Ys = []  # (N,M,T+1,dimY)
     Us = []  # (N,M,T,dimU)
+    from concurrent.futures import Future
+
     tasks: List[Optional[Future[Tuple[List[np.ndarray], List[np.ndarray]]]]] = [
         None
     ] * n_envs
 
-    max_workers = os.cpu_count() - 2
+    max_workers = os.cpu_count()
     n_workers = n_workers or max_workers
     n_workers = min(n_workers, max_workers)
     print(f"max_workers: {n_workers}")
     if use_thread:
+        from concurrent.futures import ThreadPoolExecutor
+
         tpe = ThreadPoolExecutor(max_workers=n_workers)
     else:
+        from concurrent.futures import ProcessPoolExecutor
+
         tpe = ProcessPoolExecutor(max_workers=n_workers)
     n_sub = 0  # 已提交任务数
     pbar = tqdm(total=n_traj)
@@ -174,7 +179,7 @@ def gen_data(
             if tasks[ie] is None and n_sub < n_traj:
                 # 启动新任务
                 env = envs[ie]
-                env_seed = rng.integers(INT32_MAX)  # 环境随机种子
+                env_seed = int(np_rng.integers(INT32_MAX))  # 环境随机种子
                 env.reset(seed=env_seed)  # 初始化种子&生成初始状态
                 x0_ = env._get_state().copy()
 
@@ -210,12 +215,10 @@ def gen_data(
 
         if n_new_ > 0:
             pbar.update(n_new_)
-        pbar.refresh()
         if stop:
             break
-        time.sleep(0.001)
 
-    tasks = [t for t in tasks if t is not None and not t.done()]
+    tasks = [t for t in tasks if t is not None]
     assert len(tasks) == 0, f"{tasks} task unfinished"
     tpe.shutdown(wait=True)
 
@@ -227,7 +230,7 @@ def gen_data(
 def main():
     seed = None
     nenv = 64  # 最大并行环境数
-    n_trajs = 10000  # 总轨迹数
+    n_trajs = 100000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
     Fs = 200  # 采样频率
@@ -238,7 +241,7 @@ def main():
     envcls = DOF6PlaneQuat
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
-    use_thread = True  # 是否使用线程池,否则进程池
+    use_thread = False  # 是否使用线程池,否则进程池
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
 
@@ -366,6 +369,7 @@ def main():
     data_trn.save(data_path / "train")
     data_val.save(data_path / "val")
     print(f"data>> {data_path}")
+    return
 
 
 if __name__ == "__main__":
