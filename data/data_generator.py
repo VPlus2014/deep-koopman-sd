@@ -140,7 +140,7 @@ def gen_data(
         None
     ] * n_envs
 
-    max_workers = os.cpu_count()
+    max_workers = os.cpu_count() - 2
     n_workers = n_workers or max_workers
     n_workers = min(n_workers, max_workers)
     print(f"max_workers: {n_workers}")
@@ -174,6 +174,11 @@ def gen_data(
             if tasks[ie] is None and n_sub < n_traj:
                 # 启动新任务
                 env = envs[ie]
+                env_seed = rng.integers(INT32_MAX)  # 环境随机种子
+                env.reset(seed=env_seed)  # 初始化种子&生成初始状态
+                x0_ = env._get_state().copy()
+
+                # 随机生成控制量
                 u_min_ = env.U_space.low if u_min is None else u_min
                 u_max_ = env.U_space.high if u_max is None else u_max
                 us = _ou_generator(
@@ -190,9 +195,6 @@ def gen_data(
                 if add_zeros_u:
                     us = np.concatenate([us, np.zeros_like(us)], axis=0)  # (2,T,dimU)
 
-                env = envs[ie]
-                env.reset(seed=seed)  # 生成初始状态
-                x0_ = env._get_state().copy()
                 tsk = tpe.submit(
                     _gen_trajs,
                     env,
@@ -200,7 +202,7 @@ def gen_data(
                     Fs=Fs,
                     dt_int=dt_int,
                     Ffix=Ffix,
-                    seed=seed,
+                    seed=env_seed,
                     x0=x0_,
                 )
                 tasks[ie] = tsk
