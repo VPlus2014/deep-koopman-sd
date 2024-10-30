@@ -637,21 +637,12 @@ def main():
                 # saves model weights if validation loss is the lowest ever
                 val_loss_cur = val_metrics_mean[0]
                 val_loss_opt = sw.query_min()  # 历史最优(排除当前)
-                # print(
-                #     " ".join(
-                #         [
-                #             f"val_loss_cur: {val_loss_cur:.06g}",
-                #             f"val_loss_opt: {val_loss_opt:.06g}",
-                #             f"diff: {val_loss_cur-val_loss_opt:.06g}",
-                #         ]
-                #     )
-                # )
                 if training:
-                    print(
-                        "val_loss_cur: {:.06g}".format(val_loss_cur),
-                        "val_loss_opt: {:.06g}".format(val_loss_opt),
-                        f"save?{val_loss_cur <= val_loss_opt}",
-                    )
+                    # print(
+                    #     "val_loss_cur: {:.06g}".format(val_loss_cur),
+                    #     "val_loss_opt: {:.06g}".format(val_loss_opt),
+                    #     f"save?{val_loss_cur <= val_loss_opt}",
+                    # )
                     if val_loss_cur <= val_loss_opt:
                         save_model(
                             model=model,
