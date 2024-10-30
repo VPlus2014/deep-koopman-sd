@@ -40,6 +40,7 @@ def toy_dynamics(y, t, u):
 
 
 def n2name(n: int):
+    """数字转化为带单位的字符串"""
     unit = ""
     meta = [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")]
     for m, s in meta:
@@ -238,12 +239,13 @@ def main():
     Ffix = 10  # 积分修正间隔
     ou_lambda = 0.5  # 漂移速率
     ou_sigma = 0.1  # 方差速率
-    envcls = DOF6PlaneQuat
+    envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
     use_thread = False  # 是否使用线程池,否则进程池
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
+    oldversion = False  # 是否使用旧版本数据生成器
 
     dyna = envcls(seed=seed, dtype=dtp_sim)
 
@@ -253,7 +255,7 @@ def main():
         pbar = tqdm(total=n_trajs_tst)
         while True:
             t0 = time.time()
-            env.reset()
+            y = env.reset()
             k = 0
             while True:
                 u = env.U_space.sample()
@@ -294,26 +296,27 @@ def main():
                 ]
             )
         )
+        return dimY, dimU
 
-    _env_test(dyna)
-    oldversion = False
+    dimY, dimU = _env_test(dyna)
 
     sys_name = dyna.__class__.__name__
+    #
     use_const_control = u_const is not None
-    control_suffix = "_" + ("cU" if use_const_control else "rU")
+    control_suffix = "cU" if use_const_control else "rU"
     if add_zeros_u:
         control_suffix += "&0"
-
-    Nname = n2name(n_trajs)
-    data_head = f"{sys_name}{control_suffix}_Fs{Fs}_dt{dt_int:4g}_{Nname}"
+    #
+    Nstr = n2name(n_trajs)  # 数据规模
+    data_head = f"{sys_name}Y{dimY}U{dimU}_{control_suffix}_Fs{Fs}_dt{dt_int:4g}_{Nstr}"
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    data_path = (
+    data_outdir = (
         Path(__file__).parent / "raw_data" / f"{data_head}.{timestamp}"
     ).resolve()
 
     if use_const_control:
         u_const = u_const + np.zeros_like(dyna.X_space.low)
-    print(f"data is to be saved to {data_path}")
+    print(f"data is to be saved to {data_outdir}")
 
     if oldversion:
         constraint = lambda x: not dyna.X_space.contains(
@@ -366,9 +369,9 @@ def main():
     data.us = data.us.astype(dtp_data)
     data_trn, data_val = data.train_test_split(0.8)
 
-    data_trn.save(data_path / "train")
-    data_val.save(data_path / "val")
-    print(f"data>> {data_path}")
+    data_trn.save(data_outdir / "train")
+    data_val.save(data_outdir / "val")
+    print(f"data>> {data_outdir}")
     return
 
 

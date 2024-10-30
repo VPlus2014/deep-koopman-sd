@@ -9,7 +9,7 @@ _2PI = _PI
 _PI_HF = _PI * 0.5
 
 
-class DOF6PlaneQuat(DynamicSystemBase):
+class DOF6Plane(DynamicSystemBase):
     """NED dof6 quaternion plane dynamics."""
 
     _g = 9.81  # gravity constant
@@ -195,7 +195,7 @@ class DOF6PlaneQuat(DynamicSystemBase):
 
         t0 = time()
 
-        m = DOF6PlaneQuat(dtype=np.float64, seed=seed)
+        m = DOF6Plane(dtype=np.float64, seed=seed)
         y0 = m.reset()
         ys = [y0]
         term = False
