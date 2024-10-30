@@ -69,7 +69,7 @@ name2model = {
 def get_args():
     parser = argparse.ArgumentParser("DKoopman", description="Training Models")
     parser.add_argument(
-        "--config_dir",
+        "--config",
         type=str,
         default="training/configs/"
         + [

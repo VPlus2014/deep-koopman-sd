@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
-from .config_protol import RunConfig
+from .protol4config import RunConfig
 
 
 def count_parameters(net: nn.Module):
