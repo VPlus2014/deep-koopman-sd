@@ -21,7 +21,7 @@ sys.path.append(f"{DIR_WS}")
 from model.networks import *
 from data.data_helper_fns import KoopmanData
 from tqdm import tqdm
-from .config_protol import RunConfig
+from .protol4config import RunConfig
 from .train_utils import *
 
 
@@ -373,10 +373,11 @@ class VizProcess:
             yscale="linear",
         )
 
-        # ax_lr.cla()
-        # ax_lr.plot(t_axis, lrs, color=clr_trn, linewidth=2)
-        # ax_lr.set_title("Learning Rate")
-        # ax_lr.set_xlabel("Iterations")
+        if ax_lr is not None:
+            ax_lr.cla()
+            ax_lr.plot(t_axis, lrs, color=clr_trn, linewidth=2)
+            ax_lr.set_title("Learning Rate")
+            ax_lr.set_xlabel("Iterations")
 
         fig.tight_layout()
         fig.suptitle("{}:\n{}".format(model_name, model_desc))
@@ -496,7 +497,7 @@ def main():
         print(count_parameters(model))
         print("\n")
 
-    optimizer = optim.Adam(model.parameters(), cfg.lr)
+    optimizer = optim.Adam(model.parameters(), cfg.lr, weight_decay=cfg.weight_decay)
     lr_scheduler = get_lr_scheduler(optimizer, cfg)
 
     try:
@@ -532,7 +533,7 @@ def main():
         )
     from torch.nn.utils import clip_grad_value_
 
-    grad_sup = [1e-2 / cfg.lr, 1.0][-1]
+    grad_max = cfg.grad_max
 
     def _proc_batch(
         xs: torch.Tensor,
@@ -559,7 +560,8 @@ def main():
             loss.backward()
 
             # grad clip
-            clip_grad_value_(model.parameters(), grad_sup)
+            if grad_max > 0.0:
+                clip_grad_value_(model.parameters(), grad_max)
 
             optimizer.step()
 

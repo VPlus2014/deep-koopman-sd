@@ -34,6 +34,11 @@ class RunConfig:
     lr_sch_step: int = 1000
     lr_sch_gamma: float = 0.5
     weight_decay: float = 0.0
+    r"""optimizer weight decay,
+        $\delta w = \frac{\mathrm{weight_decay}}{\mathrm{lr}}*lr = \mathrm{weight_decay}, \forall w$
+    """
+    grad_max: float = 0.0
+    """bound for gradient clipping, set to 0 to disable"""
     device: str = "cuda:0"
     seed: int = 42
 
@@ -75,7 +80,7 @@ class RunConfig:
     r"""$\frac{1}{2}\sum_i max(0,w_i^2-\delta^2)$"""
     lw_l2reg: float = 1e-03
     r"""$\sum_i max(0,|w_i|-\delta)$"""
-    use_huber: bool = False
+    use_huber: bool = True
     """use huber function instead of squared error"""
 
     verbose: bool = True

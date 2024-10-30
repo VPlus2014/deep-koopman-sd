@@ -1,5 +1,5 @@
 {
-    "data_name": "DOF6PlaneQuat_rU_Fs200_dt0.001_10K.20241029_225239",
+    "data_name": "DOF6Plane_Y18U4_rU&0_Fs200_dt0.001_100K.20241030_034505",
     "network": "deina_sd",
     "enc_x_shape": [
         18,
