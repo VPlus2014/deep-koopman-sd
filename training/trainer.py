@@ -409,7 +409,7 @@ def save_model(
 
     model_dir = path_addext(model_head, ".pt")
     Path(model_dir).parent.mkdir(parents=True, exist_ok=True)
-    print(f"model>> {model_dir}")
+    # print(f"model>> {model_dir}")
 
     model.cpu()
     torch.save(model.state_dict(), model_dir)
@@ -419,7 +419,7 @@ def save_model(
     Path(json_dir).parent.mkdir(parents=True, exist_ok=True)
     with open(json_dir, "w") as f:
         json.dump(config, f, indent=4)
-    print(f"config>> {json_dir}")
+    # print(f"config>> {json_dir}")
 
 
 def init_seed(seed: int):
