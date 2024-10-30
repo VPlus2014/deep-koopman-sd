@@ -55,6 +55,6 @@
     "viz_gui": false,
     "viz_save_itr": false,
     "viz_phase_x_idx": 0,
-    "viz_phase_y_idx": 1,
+    "viz_phase_y_idx": 3,
     "use_floyd": false
 }
