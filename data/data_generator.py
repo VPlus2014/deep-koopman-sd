@@ -247,7 +247,10 @@ def main():
     dtp_data = np.float32  # 数据类型
     oldversion = False  # 是否使用旧版本数据生成器
 
-    dyna = envcls(seed=seed, dtype=dtp_sim)
+    # 自动部分
+    env_maker = lambda seed: envcls(seed=seed, dtype=dtp_sim)
+    # mini测试环境
+    dyna = env_maker(seed)
 
     def _env_test(env: DynamicSystemBase):
         ts_traj = []
@@ -344,11 +347,8 @@ def main():
     else:
         rng = np.random.default_rng(seed)
         INT32_SUP = 1 << 31
-        nenv = min(nenv, os.cpu_count() - 2)  # 限制最大并行环境数
-        envs = [
-            envcls(seed=int(rng.integers(INT32_SUP)), dtype=dtp_sim)
-            for _ in range(nenv)
-        ]
+        nenv = min(nenv, os.cpu_count())  # 限制最大并行环境数
+        envs = [env_maker(int(rng.integers(INT32_SUP))) for _ in range(nenv)]
         data = gen_data(
             envs=envs,
             n_traj=n_trajs,
