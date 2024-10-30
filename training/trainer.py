@@ -434,8 +434,9 @@ def main():
     now_str = now2str()
     args = get_args()
 
-    assert args.config_dir, "Please provide a config file directory"
-    config_fn = Path(args.config_dir).resolve()
+    config_fn = args.config
+    assert config_fn, "Please provide a config file directory"
+    config_fn = Path(config_fn).resolve()
     print(f"config<< {config_fn}")
     cfg = RunConfig.load(config_fn)
     cfg_meta = cfg.meta()
