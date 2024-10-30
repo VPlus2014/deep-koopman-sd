@@ -379,10 +379,10 @@ class VizProcess:
             ax_lr.set_title("Learning Rate")
             ax_lr.set_xlabel("Iterations")
 
-        fig.tight_layout()
-        fig.suptitle("{}:\n{}".format(model_name, model_desc))
+        fig.suptitle("{}\n{}".format(model_name, model_desc))
 
         fig.subplots_adjust(top=0.9, hspace=0.5, wspace=0.5)
+        fig.tight_layout()
 
         fn = model_name
         if self.save_itr:
@@ -405,10 +405,11 @@ def save_model(
     model_name: str,
     device_src: torch.device,
 ):
-    model_head = os.path.join(model_name, model_name)
+    model_head = os.path.join(model_dir, model_name)
 
     model_dir = path_addext(model_head, ".pt")
     Path(model_dir).parent.mkdir(parents=True, exist_ok=True)
+    print(f"model>> {model_dir}")
 
     model.cpu()
     torch.save(model.state_dict(), model_dir)
@@ -418,6 +419,7 @@ def save_model(
     Path(json_dir).parent.mkdir(parents=True, exist_ok=True)
     with open(json_dir, "w") as f:
         json.dump(config, f, indent=4)
+    print(f"config>> {json_dir}")
 
 
 def init_seed(seed: int):
@@ -645,6 +647,11 @@ def main():
                 #     )
                 # )
                 if training:
+                    print(
+                        "val_loss_cur: {:.06g}".format(val_loss_cur),
+                        "val_loss_opt: {:.06g}".format(val_loss_opt),
+                        f"save?{val_loss_cur <= val_loss_opt}",
+                    )
                     if val_loss_cur <= val_loss_opt:
                         save_model(
                             model=model,

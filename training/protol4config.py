@@ -37,7 +37,7 @@ class RunConfig:
     r"""optimizer weight decay,
         $\delta w = \frac{\mathrm{weight_decay}}{\mathrm{lr}}*lr = \mathrm{weight_decay}, \forall w$
     """
-    grad_max: float = 0.0
+    grad_max: float = 1.0
     """bound for gradient clipping, set to 0 to disable"""
     device: str = "cuda:0"
     seed: int = 42
