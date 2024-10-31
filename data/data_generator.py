@@ -121,7 +121,7 @@ def gen_data(
     u_max: np.ndarray = None,
     add_zeros_u: bool = True,
     n_workers=None,  # 并行线程/进程数
-    env_pool_mode=True,  # 0:串行 1:进程池并行 2:线程池并行
+    env_pool_mode=1,  # 0:串行 1:进程池并行 2:线程池并行
     seed: int = None,
 ):
     """用一组给定环境生成指定时长的合法轨迹"""
@@ -252,7 +252,7 @@ def main():
     envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
-    env_pool_mode = 1  # 0:串行 1:进程池并行 2:线程池并行
+    env_pool_mode = 0  # 0:串行 1:进程池并行 2:线程池并行
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
     oldversion = False  # 是否使用旧版本数据生成器
