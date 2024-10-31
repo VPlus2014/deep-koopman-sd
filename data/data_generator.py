@@ -42,7 +42,7 @@ def toy_dynamics(y, t, u):
 def n2name(n: int):
     """数字转化为带单位的字符串"""
     unit = ""
-    meta = [(1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")]
+    meta = [(1e12, "T"), (1e9, "G"), (1e6, "M"), (1e3, "K")]
     for m, s in meta:
         if n >= m:
             n = float(n / m)
@@ -121,7 +121,7 @@ def gen_data(
     u_max: np.ndarray = None,
     add_zeros_u: bool = True,
     n_workers=None,  # 并行线程/进程数
-    use_thread=True,  # 是否使用线程池
+    env_pool_mode=True,  # 0:串行 1:进程池并行 2:线程池并行
     seed: int = None,
 ):
     """用一组给定环境生成指定时长的合法轨迹"""
@@ -138,22 +138,31 @@ def gen_data(
     Us = []  # (N,M,T,dimU)
     from concurrent.futures import Future
 
-    tasks: List[Optional[Future[Tuple[List[np.ndarray], List[np.ndarray]]]]] = [
-        None
-    ] * n_envs
+    tasks: List[
+        Union[
+            None,  #
+            Tuple[List[np.ndarray], List[np.ndarray]],  #
+            Future[Tuple[List[np.ndarray], List[np.ndarray]]],  #
+        ]
+    ] = [None] * n_envs
 
     max_workers = os.cpu_count()
     n_workers = n_workers or max_workers
     n_workers = min(n_workers, max_workers)
     print(f"max_workers: {n_workers}")
-    if use_thread:
-        from concurrent.futures import ThreadPoolExecutor
-
-        tpe = ThreadPoolExecutor(max_workers=n_workers)
-    else:
+    use_async = True
+    if env_pool_mode == 0:
+        use_async = False
+    elif env_pool_mode == 1:
         from concurrent.futures import ProcessPoolExecutor
 
-        tpe = ProcessPoolExecutor(max_workers=n_workers)
+        pe = ProcessPoolExecutor(max_workers=n_workers)
+    elif env_pool_mode == 2:
+        from concurrent.futures import ThreadPoolExecutor
+
+        pe = ThreadPoolExecutor(max_workers=n_workers)
+    else:
+        raise ValueError(f"env_pool_mode={env_pool_mode} not supported")
     n_sub = 0  # 已提交任务数
     pbar = tqdm(total=n_traj)
     while True:
@@ -162,20 +171,26 @@ def gen_data(
         # 轮询任务列表
         for ie in range(n_envs):
             tsk = tasks[ie]
-            if tsk is not None and tsk.done():
-                tasks[ie] = None
-
-                simrst = tsk.result()
-                ys, us = simrst
+            simrst = None
+            if tsk is not None:
+                tasks[ie] = None  # 清空任务
+                if isinstance(tsk, Future):
+                    if tsk.done():
+                        simrst = tsk.result()
+                else:
+                    simrst = tsk
                 #
-                if all([len(ys_) == Ts + 1 for ys_ in ys]):
-                    Ys.append(ys)
-                    Us.append(us)
+                if simrst is not None:
+                    ys, us = simrst
+                    #
+                    if all([len(ys_) == Ts + 1 for ys_ in ys]):
+                        Ys.append(ys)
+                        Us.append(us)
 
-                    n_new_ += 1
-                    if len(Ys) >= n_traj:
-                        stop = True
-                        break
+                        n_new_ += 1
+                        if len(Ys) >= n_traj:
+                            stop = True
+                            break
 
             if tasks[ie] is None and n_sub < n_traj:
                 # 启动新任务
@@ -201,16 +216,11 @@ def gen_data(
                 if add_zeros_u:
                     us = np.concatenate([us, np.zeros_like(us)], axis=0)  # (2,T,dimU)
 
-                tsk = tpe.submit(
-                    _gen_trajs,
-                    env,
-                    us,
-                    Fs=Fs,
-                    dt_int=dt_int,
-                    Ffix=Ffix,
-                    seed=env_seed,
-                    x0=x0_,
-                )
+                tsk_args = (env, us, Fs, dt_int, Ffix, env_seed, x0_)
+                if use_async:
+                    tsk = pe.submit(_gen_trajs, *tsk_args)
+                else:
+                    tsk = _gen_trajs(*tsk_args)
                 tasks[ie] = tsk
                 n_sub += 1
 
@@ -221,7 +231,7 @@ def gen_data(
 
     tasks = [t for t in tasks if t is not None]
     assert len(tasks) == 0, f"{tasks} task unfinished"
-    tpe.shutdown(wait=True)
+    pe.shutdown(wait=True)
 
     Ys = np.asarray(Ys)
     Us = np.asarray(Us)
@@ -231,7 +241,7 @@ def gen_data(
 def main():
     seed = None
     nenv = 64  # 最大并行环境数
-    n_trajs = 100000  # 总轨迹数
+    n_trajs = 10_0000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
     Fs = 200  # 采样频率
@@ -242,7 +252,7 @@ def main():
     envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
-    use_thread = False  # 是否使用线程池,否则进程池
+    env_pool_mode = 1  # 0:串行 1:进程池并行 2:线程池并行
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
     oldversion = False  # 是否使用旧版本数据生成器
@@ -361,7 +371,7 @@ def main():
             u_min=dyna.U_space.low if not use_const_control else u_const,
             u_max=dyna.U_space.high if not use_const_control else u_const,
             n_workers=nenv,
-            use_thread=use_thread,
+            env_pool_mode=env_pool_mode,
             add_zeros_u=add_zeros_u,
         )
 

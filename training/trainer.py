@@ -187,12 +187,12 @@ class VizProcess:
         ax_reg = self.ax_reg
         ax_lr = self.ax_lr
 
-        clr_trn = "purple"
-        clr_val = "grey"
-        clr_CKg = "cyan"
-        clr_CgF = "green"
-        formal_Ckg = r"$\mathcal{C}\circ\mathcal{K}\circ g$"
+        clr_trn = "grey"
+        clr_val = "purple"
+        clr_CgF = clr_trn
+        clr_CKg = clr_val
         formal_CgF = r"$\mathcal{C}\circ g\circ F$"
+        formal_Ckg = r"$\mathcal{C}\circ\mathcal{K}\circ g$"
 
         def minmax2lim(xmin: float, xmax: float, lscale=1.1, hscale=1.1, eps=1e-6):
             xc = (xmin + xmax) * 0.5 + eps
@@ -218,7 +218,7 @@ class VizProcess:
                 ls="-",
                 color=clr_CgF,
                 linewidth=2,
-                alpha=0.8,
+                alpha=0.5,
                 label=formal_CgF,
             )
             ax.plot(
@@ -264,7 +264,7 @@ class VizProcess:
                 ls_CgF,
                 color=clr_CgF,
                 linewidth=2,
-                alpha=0.8,
+                alpha=0.5,
                 label="$\mathcal{C}\circ g\circ F$",
             )
             ax_phase.scatter(
@@ -324,9 +324,11 @@ class VizProcess:
             yscale="log",
         ):
             ax.cla()
-            ax.plot(t_axis, ys_trn, label="train", color=clr_trn, linewidth=2)
+            ax.plot(
+                t_axis, ys_trn, label="train", color=clr_trn, alpha=0.5, linewidth=2
+            )
             ax.scatter(t_axis[-1], ys_trn[-1], color=clr_trn, s=25)
-            ax.plot(t_axis, ys_val, label="val", color=clr_val, linewidth=2)
+            ax.plot(t_axis, ys_val, label="val", color=clr_val, alpha=0.5, linewidth=2)
             ax.scatter(t_axis[-1], ys_val[-1], color=clr_val, s=25)
 
             ymin = min(np.min(ys_trn), np.min(ys_val))
