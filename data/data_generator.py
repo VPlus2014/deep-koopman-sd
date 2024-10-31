@@ -291,7 +291,7 @@ def gen_data(
 def main():
     seed = None
     max_envs = 64  # 最大并行环境数
-    n_trajs = 10_0000  # 总轨迹数
+    n_trajs = 200_000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
     Fs = 200  # 采样频率
