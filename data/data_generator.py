@@ -56,25 +56,57 @@ def n2name(n: int):
 def _ou_generator(
     batch_size: int,
     n_steps: int,
-    lamb: float,  # 漂移速率
-    sigma: float,  # 方差速率
     dt: float,  # 积分步长
     u_space: spaces.Box,
     u_min: np.ndarray,
     u_max: np.ndarray,
     rng: np.random.Generator,
+    theta: float = None,  # 回归速率,默认 1.0
+    sigma: float = None,  # 波动率,默认 1/6.0
 ):
-    u_n = np.clip([u_space.sample() for _ in range(batch_size)], u_min, u_max)
-    dimU = np.shape(u_n)[-1]
+    r"""
+    $$
+    U_{t+dt} = \Pi_\mathcal{U}(
+        U_t
+        +\theta ((u_max+u_min)/2 - U_t) dt
+        +\sigma (u_max-u_min) W_t \sqrt(dt)
+    ), W_t \sim N(0,1)
+    $$
+    """
+    # assert all(u_min > -np.inf), f"OU u_min must be finite, but got {u_min}"
+    # assert all(u_max < np.inf), f"OU u_max must be finite, but got {u_max}"
+    u_n = np.asarray([u_space.sample() for _ in range(batch_size)])
+    u00: np.ndarray = u_n[0]
+    u_min, u_max, u00_ = np.broadcast_arrays(u_min, u_max, u_n[0])
+    assert (
+        u00_.shape == u00.shape
+    ), f"invalid shape u_min:{u_min.shape}, u_max:{u_max.shape}, expected to broadcast to {u00.shape}"
+    assert all(
+        u_min <= u_max
+    ), f"OU expected u_min <= u_max, but got u_min={u_min}, u_max={u_max}"
+    dimU = u_n.shape[-1]
 
-    u_mu = 0.5 * (u_min + u_max * np.ones_like(u_n))  # 长期均值
-    u_mu[np.isnan(u_mu)] = 0.0
+    u_min = u_min.reshape(1, -1)
+    u_max = u_max.reshape(1, -1)
+    u_mu = 0.5 * (u_min + u_max)  # 长期均值
+    u_mu[~np.isfinite(u_mu)] = 0.0
 
-    dt_sqrt = np.sqrt(dt)
+    uspan = u_max - u_min
+    uspan[~np.isfinite(uspan)] = 1.0
+
+    if theta is None:
+        theta = 1.0
+    if sigma is None:
+        sigma = 1 / 6.0
+    theta_dt = np.reshape(theta * dt, (1, -1))
+    sqrt_sig2dt = np.reshape(sigma * math.sqrt(dt), (1, -1)) * uspan
     results = [u_n]
     for i in range(n_steps - 1):
-        noise = rng.normal(size=(batch_size, dimU)) * (sigma * dt_sqrt)
-        u_n = u_n + (u_mu - u_n) * (lamb * dt) + noise
+        dX_1 = (u_mu - u_n) * theta_dt
+        dX_2 = rng.normal(size=(batch_size, dimU)) * sqrt_sig2dt
+        dX = dX_1 + dX_2
+        #
+        u_n = u_n + dX
         u_n = np.clip(u_n, u_min, u_max)
         results.append(u_n)
     results = np.asarray(results)
@@ -115,8 +147,8 @@ def gen_data(
     dt_int: Union[int, float] = 1e-3,  # 积分步长
     Fs: int = None,  # 采样频率
     Ffix: int = None,  # 积分修正间隔
-    ou_lambda: float = 0.5,  # 漂移速率
-    ou_sigma: float = 0.1,  # 方差速率
+    ou_theta: float = None,  # 漂移速率
+    ou_sigma: float = None,  # 方差速率
     u_min: np.ndarray = None,
     u_max: np.ndarray = None,
     add_zeros_u: bool = True,
@@ -213,7 +245,7 @@ def gen_data(
                 us = _ou_generator(
                     1,
                     Ts,
-                    lamb=ou_lambda,
+                    theta=ou_theta,
                     sigma=ou_sigma,
                     dt=dt_int * Fs,
                     u_space=env.U_space,
@@ -256,8 +288,8 @@ def main():
     Fs = 200  # 采样频率
     dt_int = 1e-3  # 积分步长
     Ffix = 10  # 积分修正间隔
-    ou_lambda = 0.5  # 漂移速率
-    ou_sigma = 0.1  # 方差速率
+    ou_theta = 1.0  # OU过程 回归速率
+    ou_sigma = 0.5 / math.sqrt(Fs * dt_int)  # OU过程 扰动速率
     envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
@@ -373,7 +405,7 @@ def main():
             dt_int=dt_int,
             Fs=Fs,
             Ffix=Ffix,
-            ou_lambda=ou_lambda,
+            ou_theta=ou_theta,
             ou_sigma=ou_sigma,
             u_min=dyna.U_space.low if not use_const_control else u_const,
             u_max=dyna.U_space.high if not use_const_control else u_const,
