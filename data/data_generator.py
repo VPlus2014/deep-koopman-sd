@@ -146,13 +146,14 @@ def gen_data(
         ]
     ] = [None] * n_envs
 
-    max_workers = os.cpu_count()
+    use_async = env_pool_mode != 0
+    max_workers = os.cpu_count() if use_async else 1
     n_workers = n_workers or max_workers
     n_workers = min(n_workers, max_workers)
-    print(f"max_workers: {n_workers}")
-    use_async = True
+    if use_async:
+        print(f"env_workers: {n_workers}")
     if env_pool_mode == 0:
-        use_async = False
+        pass
     elif env_pool_mode == 1:
         from concurrent.futures import ProcessPoolExecutor
 
@@ -182,12 +183,14 @@ def gen_data(
                 #
                 if simrst is not None:
                     ys, us = simrst
+                    pbar.refresh()
                     #
                     if all([len(ys_) == Ts + 1 for ys_ in ys]):
                         Ys.append(ys)
                         Us.append(us)
 
                         n_new_ += 1
+                        pbar.update()
                         if len(Ys) >= n_traj:
                             stop = True
                             break
@@ -216,16 +219,17 @@ def gen_data(
                 if add_zeros_u:
                     us = np.concatenate([us, np.zeros_like(us)], axis=0)  # (2,T,dimU)
 
-                tsk_args = (env, us, Fs, dt_int, Ffix, env_seed, x0_)
+                tsk_args = [env, us, Fs, dt_int, Ffix, env_seed, x0_]
                 if use_async:
                     tsk = pe.submit(_gen_trajs, *tsk_args)
                 else:
                     tsk = _gen_trajs(*tsk_args)
                 tasks[ie] = tsk
                 n_sub += 1
+                pbar.refresh()
 
-        if n_new_ > 0:
-            pbar.update(n_new_)
+        # if n_new_ > 0:
+        #     pbar.update(n_new_)
         if stop:
             break
 
