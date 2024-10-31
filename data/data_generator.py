@@ -109,7 +109,7 @@ def _gen_trajs(
 
 
 def gen_data(
-    envs: List[DynamicSystemBase],
+    env_maker: Callable[[int], DynamicSystemBase],
     n_traj: int,  # 总轨迹数
     Ts: int = 1,  # 总控制步数
     dt_int: Union[int, float] = 1e-3,  # 积分步长
@@ -120,7 +120,7 @@ def gen_data(
     u_min: np.ndarray = None,
     u_max: np.ndarray = None,
     add_zeros_u: bool = True,
-    n_workers=None,  # 并行线程/进程数
+    max_workers: int = None,  # 最大并行数
     env_pool_mode=1,  # 0:串行 1:进程池并行 2:线程池并行
     seed: int = None,
 ):
@@ -129,13 +129,25 @@ def gen_data(
     Ffix = Ffix or Fs
     np_rng = np.random.default_rng(seed)
     INT32_MAX = int(np.iinfo(np.int32).max)
+    #
+    Ys = []  # (N,M,T+1,dimY)
+    Us = []  # (N,M,T,dimU)
+
+    use_async = env_pool_mode != 0
+    max_workers_2 = int(os.cpu_count()) if use_async else 1
+    nenvs = max_workers or max_workers_2
+    nenvs = min(nenvs, max_workers_2)
+    envs = [
+        env_maker(int(np_rng.integers(INT32_MAX))) for _ in range(nenvs)
+    ]  # 串行测试
+    n_envs = len(envs)
+    print(f"nenvs: {nenvs}")
+    assert n_envs > 0, "no envs created"
     if add_zeros_u:
         assert envs[0].U_space.contains(
             np.zeros_like(envs[0].U_space.low)
         ), "zero control is not valid in env"
-    n_envs = len(envs)
-    Ys = []  # (N,M,T+1,dimY)
-    Us = []  # (N,M,T,dimU)
+
     from concurrent.futures import Future
 
     tasks: List[
@@ -145,23 +157,16 @@ def gen_data(
             Future[Tuple[List[np.ndarray], List[np.ndarray]]],  #
         ]
     ] = [None] * n_envs
-
-    use_async = env_pool_mode != 0
-    max_workers = os.cpu_count() if use_async else 1
-    n_workers = n_workers or max_workers
-    n_workers = min(n_workers, max_workers)
-    if use_async:
-        print(f"env_workers: {n_workers}")
     if env_pool_mode == 0:
         pass
     elif env_pool_mode == 1:
         from concurrent.futures import ProcessPoolExecutor
 
-        pe = ProcessPoolExecutor(max_workers=n_workers)
+        pe = ProcessPoolExecutor(max_workers=nenvs)
     elif env_pool_mode == 2:
         from concurrent.futures import ThreadPoolExecutor
 
-        pe = ThreadPoolExecutor(max_workers=n_workers)
+        pe = ThreadPoolExecutor(max_workers=nenvs)
     else:
         raise ValueError(f"env_pool_mode={env_pool_mode} not supported")
     n_sub = 0  # 已提交任务数
@@ -244,7 +249,7 @@ def gen_data(
 
 def main():
     seed = None
-    nenv = 64  # 最大并行环境数
+    max_envs = 64  # 最大并行环境数
     n_trajs = 10_0000  # 总轨迹数
     add_zeros_u = True  # 是否加入零控制量对照组
     n_steps = 50  # 控制输入步数
@@ -262,9 +267,11 @@ def main():
     oldversion = False  # 是否使用旧版本数据生成器
 
     # 自动部分
-    env_maker = lambda seed: envcls(seed=seed, dtype=dtp_sim)
+    def _env_maker(seed: Optional[int] = None):
+        return envcls(seed=seed, dtype=dtp_sim)
+
     # mini测试环境
-    dyna = env_maker(seed)
+    dyna = _env_maker(seed)
 
     def _env_test(env: DynamicSystemBase):
         ts_traj = []
@@ -359,12 +366,8 @@ def main():
             constraint=constraint,
         )
     else:
-        rng = np.random.default_rng(seed)
-        INT32_SUP = 1 << 31
-        nenv = min(nenv, os.cpu_count())  # 限制最大并行环境数
-        envs = [env_maker(int(rng.integers(INT32_SUP))) for _ in range(nenv)]
         data = gen_data(
-            envs=envs,
+            env_maker=_env_maker,
             n_traj=n_trajs,
             Ts=n_steps,
             dt_int=dt_int,
@@ -374,7 +377,7 @@ def main():
             ou_sigma=ou_sigma,
             u_min=dyna.U_space.low if not use_const_control else u_const,
             u_max=dyna.U_space.high if not use_const_control else u_const,
-            n_workers=nenv,
+            max_workers=max_envs,
             env_pool_mode=env_pool_mode,
             add_zeros_u=add_zeros_u,
         )
