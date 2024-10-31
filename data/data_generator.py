@@ -204,10 +204,9 @@ def gen_data(
     else:
         raise ValueError(f"env_pool_mode={env_pool_mode} not supported")
     n_sub = 0  # 已提交任务数
-    pbar_sub = tqdm(total=n_traj)
+    # pbar_sub = tqdm(total=n_traj)
     pbar_done = tqdm(total=n_traj)
-    pbar_sub.set_description("trajs submitted\t")
-    pbar_done.set_description("trajs finished\t")
+    # pbar_sub.set_description("trajs submitted\t")
     while True:
         stop = False
         n_new_ = 0
@@ -271,7 +270,9 @@ def gen_data(
                     tsk = _gen_trajs(*tsk_args)
                 tasks[ie] = tsk
                 n_sub += 1
-                pbar_sub.update()
+                # pbar_sub.update()
+                pbar_done.set_description(f"trajs subbmitted:{n_sub}, trajs done")
+                pbar_done.refresh()
 
         # if n_new_ > 0:
         #     pbar.update(n_new_)
