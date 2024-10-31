@@ -237,8 +237,8 @@ def gen_data(
                         if len(Ys) >= n_traj:
                             stop = True
                             break
-                    else:
-                        print(f"invalid traj lens: {lens}\n")
+                    # else:
+                    #     print(f"obmitted traj lens: {lens}\n")
 
             if tasks[ie] is None and n_sub < n_traj:
                 # 启动新任务
@@ -296,8 +296,8 @@ def main():
     Fs = 200  # 采样频率
     dt_int = 1e-3  # 积分步长
     Ffix = 10  # 积分修正间隔
-    ou_theta = 0.1  # OU过程 回归速率
-    ou_sigma = 0.0 / math.sqrt(Fs * dt_int)  # OU过程 扰动速率
+    ou_theta = 0.5  # OU过程 回归速率
+    ou_sigma = 0.5 / math.sqrt(Fs * dt_int)  # OU过程 扰动速率
     envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
