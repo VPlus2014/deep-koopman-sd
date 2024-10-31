@@ -85,10 +85,11 @@ def _ou_generator(
         u_min <= u_max
     ), f"OU expected u_min <= u_max, but got u_min={u_min}, u_max={u_max}"
     dimU = u_n.shape[-1]
+    u_n = np.clip(u_n, u_min, u_max)
 
     u_min = u_min.reshape(1, -1)
     u_max = u_max.reshape(1, -1)
-    u_mu = 0.5 * (u_min + u_max)  # 长期均值
+    u_mu = (u_min + u_max) * 0.5  # 长期均值
     u_mu[~np.isfinite(u_mu)] = 0.0
 
     uspan = u_max - u_min
@@ -105,13 +106,14 @@ def _ou_generator(
         dX_1 = (u_mu - u_n) * theta_dt
         dX_2 = rng.normal(size=(batch_size, dimU)) * sqrt_sig2dt
         dX = dX_1 + dX_2
+        # assert dX.shape == u_n.shape, f"invalid shape dX:{dX.shape}, u_n:{u_n.shape}"
         #
         u_n = u_n + dX
         u_n = np.clip(u_n, u_min, u_max)
         results.append(u_n)
     results = np.asarray(results)
-
-    return np.swapaxes(results, 0, 1)
+    results = np.swapaxes(results, 0, 1)  # (N,T,dimU)
+    return results
 
 
 def _gen_trajs(
@@ -202,7 +204,10 @@ def gen_data(
     else:
         raise ValueError(f"env_pool_mode={env_pool_mode} not supported")
     n_sub = 0  # 已提交任务数
-    pbar = tqdm(total=n_traj)
+    pbar_sub = tqdm(total=n_traj)
+    pbar_done = tqdm(total=n_traj)
+    pbar_sub.set_description("trajs submitted\t")
+    pbar_done.set_description("trajs finished\t")
     while True:
         stop = False
         n_new_ = 0
@@ -211,7 +216,6 @@ def gen_data(
             tsk = tasks[ie]
             simrst = None
             if tsk is not None:
-                tasks[ie] = None  # 清空任务
                 if isinstance(tsk, Future):
                     if tsk.done():
                         simrst = tsk.result()
@@ -219,18 +223,22 @@ def gen_data(
                     simrst = tsk
                 #
                 if simrst is not None:
+                    tasks[ie] = None  # 清空已完成任务
+
                     ys, us = simrst
-                    pbar.refresh()
                     #
-                    if all([len(ys_) == Ts + 1 for ys_ in ys]):
+                    lens = np.asarray([len(ys_) for ys_ in ys])
+                    if all(lens == Ts + 1):
                         Ys.append(ys)
                         Us.append(us)
 
                         n_new_ += 1
-                        pbar.update()
+                        pbar_done.update()
                         if len(Ys) >= n_traj:
                             stop = True
                             break
+                    else:
+                        print(f"invalid traj lens: {lens}\n")
 
             if tasks[ie] is None and n_sub < n_traj:
                 # 启动新任务
@@ -263,7 +271,7 @@ def gen_data(
                     tsk = _gen_trajs(*tsk_args)
                 tasks[ie] = tsk
                 n_sub += 1
-                pbar.refresh()
+                pbar_sub.update()
 
         # if n_new_ > 0:
         #     pbar.update(n_new_)
@@ -288,12 +296,12 @@ def main():
     Fs = 200  # 采样频率
     dt_int = 1e-3  # 积分步长
     Ffix = 10  # 积分修正间隔
-    ou_theta = 1.0  # OU过程 回归速率
-    ou_sigma = 0.5 / math.sqrt(Fs * dt_int)  # OU过程 扰动速率
+    ou_theta = 0.1  # OU过程 回归速率
+    ou_sigma = 0.0 / math.sqrt(Fs * dt_int)  # OU过程 扰动速率
     envcls = DOF6Plane
     u_const: np.ndarray = None
     # u0 置 None 表示每条轨迹都独立随机生成控制量，否则所有轨迹在所有时间都沿用这个控制量
-    env_pool_mode = 0  # 0:串行 1:进程池并行 2:线程池并行
+    env_pool_mode = 1  # 0:串行 1:进程池并行 2:线程池并行
     dtp_sim = np.float64  # 仿真数据类型
     dtp_data = np.float32  # 数据类型
     oldversion = False  # 是否使用旧版本数据生成器

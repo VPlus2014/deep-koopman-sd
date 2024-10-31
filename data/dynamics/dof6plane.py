@@ -25,7 +25,7 @@ class DOF6Plane(DynamicSystemBase):
         I_xz: float = 0.0,
         V_max: float = 1.5 * 334,  # m/s
         omega_max: float = 2 * np.pi / 4,  # rad/s
-        Moment_max: float = 1000.0,  # N*m
+        Moment_max: float = 200.0,  # N*m
         nx_f_max: float = 8.0,  # G
         nx_b_max: float = 0.5,  # G
         dtype=np.float_,
