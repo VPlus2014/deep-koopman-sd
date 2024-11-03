@@ -118,8 +118,7 @@ def main():
     y.backward()
     print(y.device)
     with torch.no_grad():
-        y = y.cpu().numpy()
-    print(y.shape)
+        y = y.item()
     raise
 
     ds = [3, 3, 3, 4]

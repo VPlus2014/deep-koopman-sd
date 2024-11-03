@@ -128,13 +128,15 @@ class KoopmanMetrics:
     loss_reg: float = 0.0
     """正则化项的加权"""
     x_mse: float = 0.0
-    r"""\sum_{t,j}\frac{1}{NL} |\delta x_j|^2"""
+    r"""\sum_{t,j}\frac{1}{NL} |\delta x_j(t)|^2"""
     h_mse: float = 0.0
-    r"""\sum_{t,j}\frac{1}{NL} |\delta h_j|^2"""
+    r"""\sum_{t,j}\frac{1}{NL} |\delta h_j(t)|^2"""
     x_inf_sse: float = 0.0
-    r"""max_t \sum_j |\delta x_j|^2"""
+    r"""max_t \sum_j |\delta x_j(t)|^2"""
     h_inf_sse: float = 0.0
-    r"""max_t \sum_j |\delta h_j|^2"""
+    r"""max_t \sum_j |\delta h_j(t)|^2"""
+    x_inf: float = 0.0
+    r"""max_{tj} |\delta x_j(t)|"""
 
 
 def koopman_loss(
@@ -199,14 +201,16 @@ def koopman_loss(
     loss = loss_no_reg + loss_reg
 
     with torch.no_grad():
+        x_inf = (x_pred - x_targ).abs().max().item()
         metrics = KoopmanMetrics(
-            loss_total=loss.cpu().item(),
-            loss_no_reg=loss_no_reg.cpu().item(),
-            loss_reg=loss_reg.cpu().item(),
-            x_mse=x_mse.cpu().item(),
-            h_mse=h_mse.cpu().item(),
-            x_inf_sse=Lx_inf_2.cpu().item(),
-            h_inf_sse=Lh_inf_2.cpu().item(),
+            loss_total=loss.item(),
+            loss_no_reg=loss_no_reg.item(),
+            loss_reg=loss_reg.item(),
+            x_mse=x_mse.item(),
+            h_mse=h_mse.item(),
+            x_inf_sse=Lx_inf_2.item(),
+            h_inf_sse=Lh_inf_2.item(),
+            x_inf=x_inf,
         )
     return loss, metrics
 
@@ -280,6 +284,7 @@ WD_state_mse = "state_mse"
 WD_latent_mse = "latent_mse"
 WD_state_maxtse = "state_max_tse"
 WD_latent_maxtse = "latent_max_tse"
+WD_state_inf = "state_inf"
 WD_lr = "lr"
 WD_iter = "iter"
 #
@@ -323,6 +328,7 @@ class KoopmanSummrayWriter:
                 WD_latent_mse,
                 WD_state_maxtse,
                 WD_latent_maxtse,
+                WD_state_inf,
             ]:
                 colums.append(f"{wd1}/{wd2}")
         df = pd.DataFrame(columns=colums)
@@ -362,6 +368,7 @@ class KoopmanSummrayWriter:
             meta[f"{wd1}/{WD_latent_mse}"] = ms.h_mse
             meta[f"{wd1}/{WD_state_maxtse}"] = ms.x_inf_sse
             meta[f"{wd1}/{WD_latent_maxtse}"] = ms.h_inf_sse
+            meta[f"{wd1}/{WD_state_inf}"] = ms.x_inf
         # 添加到 tensorboard
         if self._tbsw is not None:
             add_scalar = self._tbsw.add_scalar
