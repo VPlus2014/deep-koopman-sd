@@ -421,6 +421,7 @@ def main():
             max_workers=max_envs,
             env_pool_mode=env_pool_mode,
             add_zeros_u=add_zeros_u,
+            seed=seed,
         )
 
     data.xs = data.xs.astype(dtp_data)

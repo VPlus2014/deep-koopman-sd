@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import math
 from pathlib import Path
 import traceback
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Tuple, Union
 import numpy as np
 import pandas as pd
 import torch
@@ -10,6 +10,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
 from .protol4config import RunConfig
+from torch.utils.tensorboard import SummaryWriter as TBSWriter
 
 
 def count_parameters(net: nn.Module):
@@ -119,84 +120,22 @@ class LossMetrics:
     loss_w_l2: float
 
 
-K_train_loss = "train_loss"
-K_train_reg = "train_reg"
-K_train_state_mse = "train_state_mse"
-K_train_latent_mse = "train_latent_mse"
-K_train_state_maxtse = "train_state_max_tse"
-K_train_latent_maxtse = "train_latent_max_tse"
-K_val_loss = "val_loss"
-K_val_reg = "val_reg"
-K_val_state_mse = "val_state_mse"
-K_val_latent_mse = "val_latent_mse"
-K_val_state_maxtse = "val_state_max_tse"
-K_val_latent_maxtse = "val_latent_max_tse"
-
-
-class TinySummrayWriter:
-    def __init__(self, fname: str, model_name: str):
-        self._fn = Path(fname).resolve()
-        df = pd.DataFrame(
-            columns=[
-                "model_name",
-                "iter",
-                "lr",
-                #
-                K_train_loss,
-                K_train_reg,
-                K_train_state_mse,
-                K_train_latent_mse,
-                K_train_state_maxtse,
-                K_train_latent_maxtse,
-                #
-                K_val_loss,
-                K_val_reg,
-                K_val_state_mse,
-                K_val_latent_mse,
-                K_val_state_maxtse,
-                K_val_latent_maxtse,
-            ]
-        )
-        if self._fn.exists():  # merge
-            df_ = pd.read_csv(fname)
-            try:
-                df = pd.concat([df, df_], ignore_index=True)
-            except Exception as e:
-                print(e, traceback.format_exc())
-        self._df = df
-        self.model_name = model_name
-
-    def push(
-        self,
-        train_vals: List[float],
-        val_vals: List[float],
-        lr: float,
-        to_file=True,
-    ):
-        model_name = self.model_name
-        df = self._df
-        idxs = df["model_name"] == model_name
-        itr_last = -1
-        if idxs.any():
-            itr_last = df[idxs]["iter"].max()
-
-        df.loc[len(df) + 1] = [model_name, itr_last + 1, lr, *train_vals, *val_vals]
-        if to_file:
-            self._fn.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(self._fn, index=False)
-
-    def filter_by_model(self):
-        df = self._df
-        return df[df["model_name"] == self.model_name]
-
-    def query_min(self, key="val_loss"):
-        df = self.filter_by_model()
-        df = df[key]
-        if df.empty:
-            min_val = math.inf
-        else:
-            min_val = float(df.min())
-        return min_val
+@dataclass
+class KoopmanMetrics:
+    loss_total: float = 0.0
+    """非正则化项加权+正则化项加权"""
+    loss_no_reg: float = 0.0
+    """非正则化项的加权"""
+    loss_reg: float = 0.0
+    """正则化项的加权"""
+    x_mse: float = 0.0
+    r"""\sum_{t,j}\frac{1}{NL} |\delta x_j|^2"""
+    h_mse: float = 0.0
+    r"""\sum_{t,j}\frac{1}{NL} |\delta h_j|^2"""
+    x_inf_sse: float = 0.0
+    r"""max_t \sum_j |\delta x_j|^2"""
+    h_inf_sse: float = 0.0
+    r"""max_t \sum_j |\delta h_j|^2"""
 
 
 def koopman_loss(
@@ -240,74 +179,218 @@ def koopman_loss(
     penal_l2 = get_l2_reg(model)
 
     loss_no_reg = config.lw_state * x_mse
-    for lw, loss_ent in [
+
+    _meta: List[Tuple[float, torch.Tensor]] = [
         [config.lw_latent, h_mse],
         [config.lw_x_inf_2, Lx_inf_2],
         [config.lw_h_inf_2, Lh_inf_2],
-    ]:
+    ]
+    for lw, loss_entry in _meta:
         if lw > 0.0:
-            loss_no_reg = loss_no_reg + lw * loss_ent
+            loss_no_reg = loss_no_reg + lw * loss_entry
 
     loss_reg = config.lw_l2reg * penal_l2
-    for lw, loss_ent in [
+    _meta: List[Tuple[float, torch.Tensor]] = [
         [config.lw_l1reg, penal_l1],
-    ]:
+    ]
+    for lw, loss_entry in _meta:
         if lw > 0.0:
-            loss_reg = loss_reg + lw * loss_ent
+            loss_reg = loss_reg + lw * loss_entry
 
     loss = loss_no_reg + loss_reg
 
-    metrics = np.array(
-        [
-            loss_no_reg.detach().cpu().numpy(),
-            loss_reg.detach().cpu().numpy(),
-            x_mse.detach().cpu().numpy(),
-            h_mse.detach().cpu().numpy(),
-            Lx_inf_2.detach().cpu().numpy(),
-            Lh_inf_2.detach().cpu().numpy(),
-            # penal_l1.detach().cpu().numpy(),
-            # penal_l2.detach().cpu().numpy(),
-        ],
-        dtype=np.float32,
-    )
+    with torch.no_grad():
+        metrics = KoopmanMetrics(
+            loss_total=loss.cpu().item(),
+            loss_no_reg=loss_no_reg.cpu().item(),
+            loss_reg=loss_reg.cpu().item(),
+            x_mse=x_mse.cpu().item(),
+            h_mse=h_mse.cpu().item(),
+            x_inf_sse=Lx_inf_2.cpu().item(),
+            h_inf_sse=Lh_inf_2.cpu().item(),
+        )
     return loss, metrics
 
+    # used for Floydhub
+    # def print_metrics(train_metrics_mean, val_metrics_mean, epoch, lr):
+    #     print(
+    #         '{{"metric": "Train Loss", "value": {}, "epoch": {}}}'.format(
+    #             train_metrics_mean[0], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Val Loss", "value": {}, "epoch": {}}}'.format(
+    #             val_metrics_mean[0], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Val State MSE", "value": {}, "epoch": {}}}'.format(
+    #             train_metrics_mean[1], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Val Latent MSE", "value": {}, "epoch": {}}}'.format(
+    #             val_metrics_mean[2], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Val Infinity MSE", "value": {}, "epoch": {}}}'.format(
+    #             val_metrics_mean[3], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Val Zeros MSE", "value": {}, "epoch": {}}}'.format(
+    #             val_metrics_mean[4], epoch
+    #         )
+    #     )
+    #     print(
+    #         '{{"metric": "Regularization", "value": {}, "epoch": {}}}'.format(
+    #             val_metrics_mean[5], epoch
+    #         )
+    #     )
+    #     print('{{"metric": "Learning Rate", "value": {}, "epoch": {}}}'.format(lr, epoch))
 
-# used for Floydhub
-def print_metrics(train_metrics_mean, val_metrics_mean, epoch, lr):
-    print(
-        '{{"metric": "Train Loss", "value": {}, "epoch": {}}}'.format(
-            train_metrics_mean[0], epoch
-        )
-    )
-    print(
-        '{{"metric": "Val Loss", "value": {}, "epoch": {}}}'.format(
-            val_metrics_mean[0], epoch
-        )
-    )
-    print(
-        '{{"metric": "Val State MSE", "value": {}, "epoch": {}}}'.format(
-            train_metrics_mean[1], epoch
-        )
-    )
-    print(
-        '{{"metric": "Val Latent MSE", "value": {}, "epoch": {}}}'.format(
-            val_metrics_mean[2], epoch
-        )
-    )
-    print(
-        '{{"metric": "Val Infinity MSE", "value": {}, "epoch": {}}}'.format(
-            val_metrics_mean[3], epoch
-        )
-    )
-    print(
-        '{{"metric": "Val Zeros MSE", "value": {}, "epoch": {}}}'.format(
-            val_metrics_mean[4], epoch
-        )
-    )
-    print(
-        '{{"metric": "Regularization", "value": {}, "epoch": {}}}'.format(
-            val_metrics_mean[5], epoch
-        )
-    )
-    print('{{"metric": "Learning Rate", "value": {}, "epoch": {}}}'.format(lr, epoch))
+
+def print_metrics(
+    trn_ms: KoopmanMetrics,
+    val_ms: KoopmanMetrics,
+    epoch: int,
+    lr: float,
+):
+    msgs = [
+        f"Epoch {epoch}, lr={lr:.06g}",
+        f"train_loss: {trn_ms.loss_total:.06g}",
+        f"val_loss: {val_ms.loss_total:.06g}",
+        f"val_x_mse: {val_ms.x_mse:.06g}",
+        f"val_h_mse: {val_ms.h_mse:.06g}",
+        f"val_reg: {val_ms.loss_reg:.06g}",
+        "",
+    ]
+    msg = "\n".join(msgs)
+
+    print(msg)
+
+
+WD1_train = "train"
+WD1_val = "val"
+#
+WD_loss_total = "loss_total"
+WD_loss_noreg = "loss_no_reg"
+WD_loss_reg = "loss_reg"
+WD_state_mse = "state_mse"
+WD_latent_mse = "latent_mse"
+WD_state_maxtse = "state_max_tse"
+WD_latent_maxtse = "latent_max_tse"
+WD_lr = "lr"
+WD_iter = "iter"
+#
+K_train_state_mse = f"{WD1_train}/{WD_state_mse}"
+K_train_latent_mse = f"{WD1_train}/{WD_latent_mse}"
+K_train_state_maxtse = f"{WD1_train}/{WD_state_maxtse}"
+K_train_latent_maxtse = f"{WD1_train}/{WD_latent_maxtse}"
+K_train_loss_total = f"{WD1_train}/{WD_loss_total}"
+K_train_loss_noreg = f"{WD1_train}/{WD_loss_noreg}"
+K_train_loss_reg = f"{WD1_train}/{WD_loss_reg}"
+#
+K_val_state_mse = f"{WD1_val}/{WD_state_mse}"
+K_val_latent_mse = f"{WD1_val}/{WD_latent_mse}"
+K_val_state_maxtse = f"{WD1_val}/{WD_state_maxtse}"
+K_val_latent_maxtse = f"{WD1_val}/{WD_latent_maxtse}"
+K_val_loss_total = f"{WD1_val}/{WD_loss_total}"
+K_val_loss_noreg = f"{WD1_val}/{WD_loss_noreg}"
+K_val_loss_reg = f"{WD1_val}/{WD_loss_reg}"
+
+
+class TinySummrayWriter:
+    def __init__(self, fname: str, model_name: str):
+        self._fn = Path(fname).resolve()
+        self._tb = TBSWriter(str(self._fn.parent / "tensorboard"))
+        colums = [
+            "model_name",
+            WD_iter,
+            WD_lr,
+        ]
+        for wd1 in [WD1_train, WD1_val]:
+            for wd2 in [
+                WD_loss_total,
+                WD_loss_noreg,
+                WD_loss_reg,
+                WD_state_mse,
+                WD_latent_mse,
+                WD_state_maxtse,
+                WD_latent_maxtse,
+            ]:
+                colums.append(f"{wd1}/{wd2}")
+        df = pd.DataFrame(columns=colums)
+        if self._fn.exists():  # merge
+            df_ = pd.read_csv(fname)
+            try:
+                df = pd.concat([df, df_], ignore_index=True)
+            except Exception as e:
+                print(e, traceback.format_exc())
+        self._df = df
+        self.model_name = model_name
+
+    def push(
+        self,
+        train_ms: KoopmanMetrics,
+        val_ms: KoopmanMetrics,
+        lr: float,
+        to_csv=True,
+    ):
+        model_name = self.model_name
+        df = self._df
+        idxs = df["model_name"] == model_name
+        itr_last = -1
+        if idxs.any():
+            itr_last = df[idxs][WD_iter].max()
+        itr_new = itr_last + 1
+
+        meta: Dict[str, Union[float, int, str]] = {}
+        for wd1, ms in [
+            (WD1_train, train_ms),
+            (WD1_val, val_ms),
+        ]:
+            meta[f"{wd1}/{WD_loss_total}"] = ms.loss_total
+            meta[f"{wd1}/{WD_loss_noreg}"] = ms.loss_no_reg
+            meta[f"{wd1}/{WD_loss_reg}"] = ms.loss_reg
+            meta[f"{wd1}/{WD_state_mse}"] = ms.x_mse
+            meta[f"{wd1}/{WD_latent_mse}"] = ms.h_mse
+            meta[f"{wd1}/{WD_state_maxtse}"] = ms.x_inf_sse
+            meta[f"{wd1}/{WD_latent_maxtse}"] = ms.h_inf_sse
+        # 添加到 tensorboard
+        add_scalar = self._tb.add_scalar
+        for name, v in meta.items():
+            add_scalar(f"{model_name}/{name}", v, itr_new)
+
+        # 添加到 csv
+        meta["model_name"] = model_name
+        meta[WD_lr] = lr
+        meta[WD_iter] = itr_new
+        new_row = pd.Series(meta)
+        df.loc[len(df) + 1] = new_row
+        if to_csv:
+            self._fn.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(self._fn, index=False)
+
+    def filter_by_model(self):
+        df = self._df
+        return df[df["model_name"] == self.model_name]
+
+    def query_min(self, key=K_val_loss_noreg):
+        df = self.filter_by_model()
+        df = df[key]
+        if df.empty:
+            min_val = math.inf
+        else:
+            min_val = float(df.min())
+        return min_val
+
+    def close(self):
+        if self._tb is not None:
+            self._tb.close()
+            self._tb = None
+        self._df = None
+
+    def __del__(self):
+        self.close()

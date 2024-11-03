@@ -112,6 +112,16 @@ from gymnasium import spaces
 
 
 def main():
+    x = torch.randn([1, 2, 3], device="cuda:0", requires_grad=True)
+    print(x.device)
+    y = x.square().sum()
+    y.backward()
+    print(y.device)
+    with torch.no_grad():
+        y = y.cpu().numpy()
+    print(y.shape)
+    raise
+
     ds = [3, 3, 3, 4]
     a = [1, 2, 3]
     b = [4]

@@ -23,6 +23,7 @@ from data.data_helper_fns import KoopmanData
 from tqdm import tqdm
 from .protol4config import RunConfig
 from .train_utils import *
+from tensorboardX import SummaryWriter as TBXWriter
 
 
 def now2str():
@@ -71,14 +72,21 @@ def get_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="training/configs/"
-        + [
-            "config_deina_jbf_pendulum.json",
-            "config_deina_demo.json",
-            "config_deina_sd_pend.json",
-            "pend_deina_sd.json",
-            "dof6plane_deina_rsd.json",
-        ][-1],
+        default=str(
+            DIR_WS
+            / "training"
+            / "configs"
+            / (
+                [
+                    "config_deina_jbf_pendulum.json",
+                    "config_deina_demo.json",
+                    "config_deina_sd_pend.json",
+                    "pend_deina_sd.json",
+                    "dof6plane_deina_rsd.json",
+                    "dof6plane18_deina_rsd.json",
+                ][-1]
+            )
+        ),
         help="config file directory",
     )
     # parser.add_argument(
@@ -306,13 +314,13 @@ class VizProcess:
         h_mse_trn = np.asarray(df_stat[K_train_latent_mse])
         x_inf_trn = np.asarray(df_stat[K_train_state_maxtse])
         h_inf_trn = np.asarray(df_stat[K_train_latent_maxtse])
-        reg_trn = np.asarray(df_stat[K_train_reg])
+        reg_trn = np.asarray(df_stat[K_train_loss_reg])
         #
         x_mse_val = np.asarray(df_stat[K_val_state_mse])
         h_mse_val = np.asarray(df_stat[K_val_latent_mse])
         x_inf_val = np.asarray(df_stat[K_val_state_maxtse])
         h_inf_val = np.asarray(df_stat[K_val_latent_maxtse])
-        reg_val = np.asarray(df_stat[K_val_reg])
+        reg_val = np.asarray(df_stat[K_val_loss_reg])
 
         def _plot_lines(
             ax: plt.Axes,
@@ -543,8 +551,6 @@ def main():
     def _proc_batch(
         xs: torch.Tensor,
         us: torch.Tensor = None,
-        metrics_mean: List[np.ndarray] = [],
-        loss_mean: List[float] = [],
         training=True,
     ):
         # if config["lw_zero"] != 0.0:
@@ -570,9 +576,7 @@ def main():
 
             optimizer.step()
 
-        metrics_mean.append(metrics)
-        loss_mean.append(metrics[0])
-        return loss_mean, metrics_mean
+        return metrics
 
     N = len(train_x)
     model_desc = cfg.description
@@ -581,126 +585,174 @@ def main():
     pbar_e = range(EPOCHS)
     if not use_floyd:
         pbar_e = tqdm(pbar_e)
-    for epoch in pbar_e:
-        pbar_b = range(0, N, BATCH_SIZE)
-        # dont show tqdm on floydhub
-        if not use_floyd:
-            pbar_b = tqdm(pbar_b)
-        ilt = IntLinspaceTimer(0, len(pbar_b) - 1, VAL_FEQ)
+    trn_metrics: List[KoopmanMetrics] = []
+    val_metrics: List[KoopmanMetrics] = []
 
-        # permute training samples across each epoch
-        trn_ids = torch.randperm(N)
+    def is_scalar(x):
+        if isinstance(x, torch.Tensor):
+            return x.numel() == 1
+        elif isinstance(x, np.ndarray):
+            try:
+                v = x.item()
+                return True
+            except:
+                return False
+        return (
+            isinstance(x, float)
+            or isinstance(x, np.floating)
+            or isinstance(x, np.integer)
+        )
 
-        # training starts
-        trn_metrics = []
-        trn_losses = []
-        IDX_x_mse = 2
-        IDX_h_mse = IDX_x_mse + 1
-        for idx, i in enumerate(pbar_b):
-            b_ids = trn_ids[i : i + BATCH_SIZE]
+    def _calc_metrics_mean(ms: List[KoopmanMetrics]):
+        assert len(ms) > 0
+        ks = [k for k, v in ms[0].__dict__.items() if is_scalar(v)]
+        d = {k: np.mean([getattr(m, k) for m in ms]).item() for k in ks}
+        ms_mean = KoopmanMetrics(**d)
+        return ms_mean
 
-            model.train(True)
-            trn_losses, trn_metrics = _proc_batch(
-                train_x[b_ids],
-                train_u[b_ids] if with_u else None,
-                trn_metrics,
-                trn_losses,
-                training=True,
-            )
+    # used for Floydhub
+    def print_metrics(
+        trn_ms: KoopmanMetrics,
+        val_ms: KoopmanMetrics,
+        epoch: int,
+        lr: float,
+    ):
+        msgs = [
+            f"Epoch {epoch}, lr={lr:.06g}",
+            f"train_loss: {trn_ms.loss_total:.06g}",
+            f"val_loss: {val_ms.loss_total:.06g}",
+            f"val_x_mse: {val_ms.x_mse:.06g}",
+            f"val_h_mse: {val_ms.h_mse:.06g}",
+            f"val_reg: {val_ms.loss_reg:.06g}",
+            "",
+        ]
+        msg = "\n".join(msgs)
 
-            # validation starts
-            is_final_batch = (idx + 1) == len(pbar_b)
-            _tick = ilt.step()
-            if _tick or is_final_batch:
-                val_metrics = []
-                val_losses = []
-                model.train(False)
-                with torch.no_grad():
-                    # batching validation set
-                    for j in range(0, len(val_x), BATCH_SIZE):
-                        val_ids = slice(j, j + BATCH_SIZE)
-                        batch_val_x = val_x[val_ids]
-                        batch_val_u = val_u[val_ids] if with_u else None
-                        val_losses, val_metrics = _proc_batch(
-                            batch_val_x,
-                            batch_val_u,
-                            val_metrics,
-                            val_losses,
-                            training=False,
-                        )
+        print(msg)
 
-                # average loss components across validation batches
-                trn_metrics_mean = np.asarray(trn_metrics).mean(axis=0)
-                trn_loss_mean = np.mean(trn_losses)
-                val_metrics_mean = np.asarray(val_metrics).mean(axis=0)
-                val_loss_mean = np.mean(val_losses)
-                lr_ = lr_scheduler.get_last_lr()[0]
+    try:
+        for epoch in pbar_e:
+            pbar_b = range(0, N, BATCH_SIZE)
+            # dont show tqdm on floydhub
+            if not use_floyd:
+                pbar_b = tqdm(pbar_b)
+            ilt = IntLinspaceTimer(0, len(pbar_b) - 1, VAL_FEQ)
 
-                # saves model weights if validation loss is the lowest ever
-                val_loss_cur = val_metrics_mean[0]
-                val_loss_opt = sw.query_min()  # 历史最优(排除当前)
-                if training:
-                    # print(
-                    #     "val_loss_cur: {:.06g}".format(val_loss_cur),
-                    #     "val_loss_opt: {:.06g}".format(val_loss_opt),
-                    #     f"save?{val_loss_cur <= val_loss_opt}",
-                    # )
-                    if val_loss_cur <= val_loss_opt:
-                        save_model(
-                            model=model,
-                            config=cfg_meta,
-                            itr=epoch,
-                            model_dir=MODEL_DIR,
+            # permute training samples across each epoch
+            trn_ids = torch.randperm(N)
+
+            # training starts
+            trn_metrics.clear()
+            for idx, i in enumerate(pbar_b):
+                b_ids = trn_ids[i : i + BATCH_SIZE]
+
+                model.train(True)
+                trn_metrics_i = _proc_batch(
+                    train_x[b_ids],
+                    train_u[b_ids] if with_u else None,
+                    training=True,
+                )
+                trn_metrics.append(trn_metrics_i)
+
+                # validation starts
+                is_final_batch = (idx + 1) == len(pbar_b)
+                _tick = ilt.step()
+                if _tick or is_final_batch:
+                    val_metrics.clear()
+                    model.train(False)
+                    with torch.no_grad():
+                        # batching validation set
+                        for j in range(0, len(val_x), BATCH_SIZE):
+                            val_ids = slice(j, j + BATCH_SIZE)
+                            batch_val_x = val_x[val_ids]
+                            batch_val_u = val_u[val_ids] if with_u else None
+                            val_metrics_i = _proc_batch(
+                                batch_val_x,
+                                batch_val_u,
+                                training=False,
+                            )
+                            val_metrics.append(val_metrics_i)
+
+                    # average loss components across validation batches
+
+                    trn_metrics_mean = _calc_metrics_mean(trn_metrics)
+                    val_metrics_mean = _calc_metrics_mean(val_metrics)
+                    trn_loss_mean = trn_metrics_mean.loss_no_reg
+                    val_loss_mean = val_metrics_mean.loss_no_reg
+                    lr_ = lr_scheduler.get_last_lr()[0]
+
+                    # saves model weights if validation loss is the lowest ever
+                    val_loss_cur = val_metrics_mean.loss_no_reg
+                    val_loss_opt = sw.query_min()  # 历史最优(排除当前)
+
+                    if training:
+                        # print(
+                        #     "val_loss_cur: {:.06g}".format(val_loss_cur),
+                        #     "val_loss_opt: {:.06g}".format(val_loss_opt),
+                        #     f"save?{val_loss_cur <= val_loss_opt}",
+                        # )
+                        if val_loss_cur <= val_loss_opt:
+                            save_model(
+                                model=model,
+                                config=cfg_meta,
+                                itr=epoch,
+                                model_dir=MODEL_DIR,
+                                model_name=MODEL_NAME,
+                                device_src=dv,
+                            )
+
+                        #
+                    sw.push(trn_metrics_mean, val_metrics_mean, lr_)
+
+                    if viz and is_final_batch:
+                        if with_u:
+                            viz_data = [batch_val_x, batch_val_u]
+                        else:
+                            viz_data = batch_val_x
+
+                        df4viz = sw.filter_by_model()
+                        vp.visualize(
+                            model,
+                            viz_data,
+                            epoch,
                             model_name=MODEL_NAME,
-                            device_src=dv,
+                            model_desc=model_desc,
+                            df_stat=df4viz,
+                            i_phx=cfg.viz_phase_x_idx,
+                            i_phy=cfg.viz_phase_y_idx,
                         )
 
-                    #
-                sw.push(trn_metrics_mean, val_metrics_mean, lr_)
+                    if not use_floyd:
+                        # update progress bar
+                        trn_x_mse_ = trn_metrics_mean.x_mse
+                        val_x_mse_ = val_metrics_mean.x_mse
+                        trn_h_mse_ = trn_metrics_mean.h_mse
+                        val_h_mse_ = val_metrics_mean.h_mse
+                        fmt_flt_ = "{:0.01e}"
+                        fmt_tup_ = fmt_flt_ + "/" + fmt_flt_
+                        desc = " ".join(
+                            [
+                                # f"{epoch}/{EPOCHS}",
+                                (f"L:{fmt_tup_}").format(trn_loss_mean, val_loss_mean),
+                                (f"Xmse:{fmt_tup_}").format(trn_x_mse_, val_x_mse_),
+                                (f"Hmse:{fmt_tup_}").format(trn_h_mse_, val_h_mse_),
+                            ]
+                        )
+                        pbar_b.set_description(desc)
+                        pbar_b.refresh()
 
-                if viz and is_final_batch:
-                    if with_u:
-                        viz_data = [batch_val_x, batch_val_u]
-                    else:
-                        viz_data = batch_val_x
+            if not use_floyd:
+                # pbar_e.set_description(f"Epoch {epoch}/{EPOCHS}")
+                pbar_e.refresh()
+            else:
+                print_metrics(trn_metrics, val_metrics_mean, epoch, lr_)
+            lr_scheduler.step()
 
-                    df4viz = sw.filter_by_model()
-                    vp.visualize(
-                        model,
-                        viz_data,
-                        epoch,
-                        model_name=MODEL_NAME,
-                        model_desc=model_desc,
-                        df_stat=df4viz,
-                        i_phx=cfg.viz_phase_x_idx,
-                        i_phy=cfg.viz_phase_y_idx,
-                    )
-
-                if not use_floyd:
-                    # update progress bar
-                    trn_x_mse_ = trn_metrics_mean[IDX_x_mse]
-                    val_x_mse_ = val_metrics_mean[IDX_x_mse]
-                    trn_h_mse_ = trn_metrics_mean[IDX_h_mse]
-                    val_h_mse_ = val_metrics_mean[IDX_h_mse]
-                    fmt_flt_ = "{:0.01e}"
-                    fmt_tup_ = fmt_flt_ + "/" + fmt_flt_
-                    desc = " ".join(
-                        [
-                            # f"{epoch}/{EPOCHS}",
-                            (f"L:{fmt_tup_}").format(trn_loss_mean, val_loss_mean),
-                            (f"Xmse:{fmt_tup_}").format(trn_x_mse_, val_x_mse_),
-                            (f"Hmse:{fmt_tup_}").format(trn_h_mse_, val_h_mse_),
-                        ]
-                    )
-                    pbar_b.set_description(desc)
-                    pbar_b.refresh()
-
-        if not use_floyd:
-            # pbar_e.set_description(f"Epoch {epoch}/{EPOCHS}")
-            pbar_e.refresh()
-        else:
-            print_metrics(trn_metrics, val_metrics_mean, epoch, lr_)
-        lr_scheduler.step()
+    except Exception as e:
+        print(f"Exception: {e}\n{traceback.format_exc()}")
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+    sw.close()
 
 
 if __name__ == "__main__":
