@@ -137,7 +137,7 @@ def main():
         er_np: np.ndarray = er.cpu().numpy()
         ms = []
         for i in range(10):
-            ms.append(KoopmanMetrics(x_maxt_ae=er_np))
+            ms.append(KoopmanMetrics(x_mean_maxt_ae=er_np))
         ms_mean = _calc_metrics_mean(ms)
     print(er_np.shape)
     print(x.device)

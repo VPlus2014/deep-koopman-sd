@@ -131,11 +131,11 @@ class KoopmanMetrics:
     r"""\frac{1}{NL}\sum_{t,j} |\delta x_j^i(t)|^2"""
     h_mse: float = 0.0
     r"""\frac{1}{NL}\sum_{t,j} |\delta h_j^i(t)|^2"""
-    x_maxt_sumj_se: float = 0.0
+    x_mean_maxt_sse: float = 0.0
     r"""\frac{1}{N}\sum_i max_t \sum_j |\delta x_j^i(t)|^2"""
-    h_maxt_sumj_se: float = 0.0
+    h_mean_maxt_sse: float = 0.0
     r"""\frac{1}{N}\sum_i max_t \sum_j |\delta h_j^i(t)|^2"""
-    x_maxt_ae: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    x_mean_maxt_ae: np.ndarray = field(default_factory=lambda: np.zeros(0))
     r"""j\mapsto\frac{1}{N}\sum_i max_{t} |\delta x_j^i(t)|"""
 
 
@@ -202,17 +202,17 @@ def koopman_loss(
 
     with torch.no_grad():
         aes = (x_pred - x_targ).abs()
-        x_maxt = aes.max(-2)[0]
-        x_meani_maxt = x_maxt.view(-1, aes.shape[-1]).mean(0)
+        x_maxt = aes.max(-2)[0]  # (N,D)
+        x_mean_maxt = x_maxt.view(-1, aes.shape[-1]).mean(0)
         metrics = KoopmanMetrics(
             loss_total=loss.item(),
             loss_no_reg=loss_no_reg.item(),
             loss_reg=loss_reg.item(),
             x_mse=x_mse.item(),
             h_mse=h_mse.item(),
-            x_maxt_sumj_se=Lx_inf_2.item(),
-            h_maxt_sumj_se=Lh_inf_2.item(),
-            x_maxt_ae=x_meani_maxt.cpu().numpy(),
+            x_mean_maxt_sse=Lx_inf_2.item(),
+            h_mean_maxt_sse=Lh_inf_2.item(),
+            x_mean_maxt_ae=x_mean_maxt.cpu().numpy(),
         )
     return loss, metrics
 
@@ -284,24 +284,24 @@ WD_loss_noreg = "loss_no_reg"
 WD_loss_reg = "loss_reg"
 WD_state_mse = "state_mse"
 WD_latent_mse = "latent_mse"
-WD_state_maxtse = "state_max_tse"
-WD_latent_maxtse = "latent_max_tse"
-WD_state_inf = "state_mean_i_max_t"
+WD_state_meani_maxt_sse = "state_mean_i_max_t_sse"
+WD_latent_meani_maxt_sse = "latent_mean_i_max_t_sse"
+WD_state_maxt_ae = "state_mean_it_ae"
 WD_lr = "lr"
 WD_iter = "iter"
 #
 K_train_state_mse = f"{WD1_train}/{WD_state_mse}"
 K_train_latent_mse = f"{WD1_train}/{WD_latent_mse}"
-K_train_state_maxtse = f"{WD1_train}/{WD_state_maxtse}"
-K_train_latent_maxtse = f"{WD1_train}/{WD_latent_maxtse}"
+K_train_state_maxtse = f"{WD1_train}/{WD_state_meani_maxt_sse}"
+K_train_latent_maxtse = f"{WD1_train}/{WD_latent_meani_maxt_sse}"
 K_train_loss_total = f"{WD1_train}/{WD_loss_total}"
 K_train_loss_noreg = f"{WD1_train}/{WD_loss_noreg}"
 K_train_loss_reg = f"{WD1_train}/{WD_loss_reg}"
 #
 K_val_state_mse = f"{WD1_val}/{WD_state_mse}"
 K_val_latent_mse = f"{WD1_val}/{WD_latent_mse}"
-K_val_state_maxtse = f"{WD1_val}/{WD_state_maxtse}"
-K_val_latent_maxtse = f"{WD1_val}/{WD_latent_maxtse}"
+K_val_state_maxtse = f"{WD1_val}/{WD_state_meani_maxt_sse}"
+K_val_latent_maxtse = f"{WD1_val}/{WD_latent_meani_maxt_sse}"
 K_val_loss_total = f"{WD1_val}/{WD_loss_total}"
 K_val_loss_noreg = f"{WD1_val}/{WD_loss_noreg}"
 K_val_loss_reg = f"{WD1_val}/{WD_loss_reg}"
@@ -330,8 +330,8 @@ class KoopmanSummrayWriter:
                 WD_loss_reg,
                 WD_state_mse,
                 WD_latent_mse,
-                WD_state_maxtse,
-                WD_latent_maxtse,
+                WD_state_meani_maxt_sse,
+                WD_latent_meani_maxt_sse,
             ]:
                 colums.append(f"{wd1}/{wd2}")
         df = pd.DataFrame(columns=colums)
@@ -369,15 +369,18 @@ class KoopmanSummrayWriter:
             meta4tb[f"{wd1}/{WD_loss_reg}"] = ms.loss_reg
             meta4tb[f"{wd1}/{WD_state_mse}"] = ms.x_mse
             meta4tb[f"{wd1}/{WD_latent_mse}"] = ms.h_mse
-            meta4tb[f"{wd1}/{WD_state_maxtse}"] = ms.x_maxt_sumj_se
-            meta4tb[f"{wd1}/{WD_latent_maxtse}"] = ms.h_maxt_sumj_se
-            for j, ae in enumerate(ms.x_maxt_ae):
-                meta4tb[f"{wd1}/{WD_state_inf}_{j}"] = ae
+            meta4tb[f"{wd1}/{WD_state_meani_maxt_sse}"] = ms.x_mean_maxt_sse
+            meta4tb[f"{wd1}/{WD_latent_meani_maxt_sse}"] = ms.h_mean_maxt_sse
+            for j, ae in enumerate(ms.x_mean_maxt_ae):
+                meta4tb[f"{wd1}/{WD_state_maxt_ae}_{j}"] = ae
         # 添加到 tensorboard
         if self._tbsw is not None:
             add_scalar = self._tbsw.add_scalar
             for name, v in meta4tb.items():
-                add_scalar(f"{model_name}/{name}", v, itr_new)
+                try:
+                    add_scalar(f"{model_name}/{name}", v, itr_new)
+                except KeyboardInterrupt:
+                    pass
 
         # 添加到 csv
         meta4csv = {k: v for k, v in meta4tb.items() if k in self._csv_columns}
