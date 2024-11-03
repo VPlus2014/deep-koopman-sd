@@ -373,7 +373,9 @@ def main():
         control_suffix += "&0"
     #
     Nstr = n2name(n_trajs)  # 数据规模
-    data_head = f"{sys_name}Y{dimY}U{dimU}_{control_suffix}_Fs{Fs}_dt{dt_int:4g}_{Nstr}"
+    data_head = (
+        f"{sys_name}_Y{dimY}U{dimU}_{control_suffix}_Fs{Fs}_dt{dt_int:4g}_{Nstr}"
+    )
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     data_outdir = (
         Path(__file__).parent / "raw_data" / f"{data_head}.{timestamp}"
