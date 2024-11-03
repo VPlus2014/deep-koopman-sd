@@ -4,6 +4,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from training.train_utils import KoopmanMetrics
+
 
 def rpy2mat(roll, pitch, yaw, deg=False) -> np.ndarray:
     _pkg = np
@@ -112,7 +114,32 @@ from gymnasium import spaces
 
 
 def main():
-    x = torch.randn([1, 2, 3], device="cuda:0", requires_grad=True)
+
+    def _calc_metrics_mean(ms: List[KoopmanMetrics]):
+        assert len(ms) > 0
+        ks = [
+            k
+            for k, v in ms[0].__dict__.items()
+            if isinstance(v, (int, float, np.ndarray, np.floating, np.integer))
+        ]
+        d = {}
+        for k in ks:
+            vs = np.asarray([getattr(m, k) for m in ms])  # (N,) | (N,D)
+            v = np.mean(vs, axis=0)
+            d[k] = v
+        ms_mean = KoopmanMetrics(**d)
+        return ms_mean
+
+    x = torch.randn([32, 50, 3], device="cuda:0", requires_grad=True)
+    with torch.no_grad():
+        er = x.max(dim=-2)[0]
+        er = er.view(-1, x.shape[-1]).mean(dim=0)
+        er_np: np.ndarray = er.cpu().numpy()
+        ms = []
+        for i in range(10):
+            ms.append(KoopmanMetrics(x_maxt_ae=er_np))
+        ms_mean = _calc_metrics_mean(ms)
+    print(er_np.shape)
     print(x.device)
     y = x.square().sum()
     y.backward()

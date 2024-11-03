@@ -587,25 +587,18 @@ def main():
     trn_metrics: List[KoopmanMetrics] = []
     val_metrics: List[KoopmanMetrics] = []
 
-    def is_scalar(x):
-        if isinstance(x, torch.Tensor):
-            return x.numel() == 1
-        elif isinstance(x, np.ndarray):
-            try:
-                v = x.item()
-                return True
-            except:
-                return False
-        return (
-            isinstance(x, float)
-            or isinstance(x, np.floating)
-            or isinstance(x, np.integer)
-        )
-
     def _calc_metrics_mean(ms: List[KoopmanMetrics]):
         assert len(ms) > 0
-        ks = [k for k, v in ms[0].__dict__.items() if is_scalar(v)]
-        d = {k: np.mean([getattr(m, k) for m in ms]).item() for k in ks}
+        ks = [
+            k
+            for k, v in ms[0].__dict__.items()
+            if isinstance(v, (int, float, np.ndarray, np.floating, np.integer))
+        ]
+        d = {}
+        for k in ks:
+            vs = np.asarray([getattr(m, k) for m in ms])  # (N,) | (N,D)
+            v = np.mean(vs, axis=0)
+            d[k] = v
         ms_mean = KoopmanMetrics(**d)
         return ms_mean
 
@@ -681,8 +674,10 @@ def main():
                     lr_ = lr_scheduler.get_last_lr()[0]
 
                     # saves model weights if validation loss is the lowest ever
-                    val_loss_cur = val_metrics_mean.loss_no_reg
-                    val_loss_opt = sw.query_min()  # 历史最优(排除当前)
+                    val_loss4save_cur = val_metrics_mean.x_mse
+                    val_loss4save_opt = sw.query_min(
+                        K_val_state_mse
+                    )  # 历史最优(排除当前)
 
                     if training:
                         # print(
@@ -690,7 +685,7 @@ def main():
                         #     "val_loss_opt: {:.06g}".format(val_loss_opt),
                         #     f"save?{val_loss_cur <= val_loss_opt}",
                         # )
-                        if val_loss_cur <= val_loss_opt:
+                        if val_loss4save_cur <= val_loss4save_opt:
                             save_model(
                                 model=model,
                                 config=cfg_meta,

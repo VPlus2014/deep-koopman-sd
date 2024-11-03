@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from pathlib import Path
 import traceback
@@ -128,15 +128,15 @@ class KoopmanMetrics:
     loss_reg: float = 0.0
     """正则化项的加权"""
     x_mse: float = 0.0
-    r"""\sum_{t,j}\frac{1}{NL} |\delta x_j(t)|^2"""
+    r"""\frac{1}{NL}\sum_{t,j} |\delta x_j^i(t)|^2"""
     h_mse: float = 0.0
-    r"""\sum_{t,j}\frac{1}{NL} |\delta h_j(t)|^2"""
-    x_inf_sse: float = 0.0
-    r"""max_t \sum_j |\delta x_j(t)|^2"""
-    h_inf_sse: float = 0.0
-    r"""max_t \sum_j |\delta h_j(t)|^2"""
-    x_inf: float = 0.0
-    r"""max_{tj} |\delta x_j(t)|"""
+    r"""\frac{1}{NL}\sum_{t,j} |\delta h_j^i(t)|^2"""
+    x_maxt_sumj_se: float = 0.0
+    r"""\frac{1}{N}\sum_i max_t \sum_j |\delta x_j^i(t)|^2"""
+    h_maxt_sumj_se: float = 0.0
+    r"""\frac{1}{N}\sum_i max_t \sum_j |\delta h_j^i(t)|^2"""
+    x_maxt_ae: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    r"""j\mapsto\frac{1}{N}\sum_i max_{t} |\delta x_j^i(t)|"""
 
 
 def koopman_loss(
@@ -201,16 +201,18 @@ def koopman_loss(
     loss = loss_no_reg + loss_reg
 
     with torch.no_grad():
-        x_inf = (x_pred - x_targ).abs().max().item()
+        aes = (x_pred - x_targ).abs()
+        x_maxt = aes.max(-2)[0]
+        x_meani_maxt = x_maxt.view(-1, aes.shape[-1]).mean(0)
         metrics = KoopmanMetrics(
             loss_total=loss.item(),
             loss_no_reg=loss_no_reg.item(),
             loss_reg=loss_reg.item(),
             x_mse=x_mse.item(),
             h_mse=h_mse.item(),
-            x_inf_sse=Lx_inf_2.item(),
-            h_inf_sse=Lh_inf_2.item(),
-            x_inf=x_inf,
+            x_maxt_sumj_se=Lx_inf_2.item(),
+            h_maxt_sumj_se=Lh_inf_2.item(),
+            x_maxt_ae=x_meani_maxt.cpu().numpy(),
         )
     return loss, metrics
 
@@ -284,7 +286,7 @@ WD_state_mse = "state_mse"
 WD_latent_mse = "latent_mse"
 WD_state_maxtse = "state_max_tse"
 WD_latent_maxtse = "latent_max_tse"
-WD_state_inf = "state_inf"
+WD_state_inf = "state_mean_i_max_t"
 WD_lr = "lr"
 WD_iter = "iter"
 #
@@ -314,11 +316,13 @@ class KoopmanSummrayWriter:
             self._tbsw = TBSWriter(str(self._fn_csv.parent / "tensorboard"))
         else:
             self._tbsw = None
+
         colums = [
             "model_name",
             WD_iter,
             WD_lr,
         ]
+        self._csv_columns = colums
         for wd1 in [WD1_train, WD1_val]:
             for wd2 in [
                 WD_loss_total,
@@ -328,7 +332,6 @@ class KoopmanSummrayWriter:
                 WD_latent_mse,
                 WD_state_maxtse,
                 WD_latent_maxtse,
-                WD_state_inf,
             ]:
                 colums.append(f"{wd1}/{wd2}")
         df = pd.DataFrame(columns=colums)
@@ -356,30 +359,32 @@ class KoopmanSummrayWriter:
             itr_last = df[idxs][WD_iter].max()
         itr_new = itr_last + 1
 
-        meta: Dict[str, Union[float, int, str]] = {}
+        meta4tb: Dict[str, Union[float, int, str]] = {}
         for wd1, ms in [
             (WD1_train, train_ms),
             (WD1_val, val_ms),
         ]:
-            meta[f"{wd1}/{WD_loss_total}"] = ms.loss_total
-            meta[f"{wd1}/{WD_loss_noreg}"] = ms.loss_no_reg
-            meta[f"{wd1}/{WD_loss_reg}"] = ms.loss_reg
-            meta[f"{wd1}/{WD_state_mse}"] = ms.x_mse
-            meta[f"{wd1}/{WD_latent_mse}"] = ms.h_mse
-            meta[f"{wd1}/{WD_state_maxtse}"] = ms.x_inf_sse
-            meta[f"{wd1}/{WD_latent_maxtse}"] = ms.h_inf_sse
-            meta[f"{wd1}/{WD_state_inf}"] = ms.x_inf
+            meta4tb[f"{wd1}/{WD_loss_total}"] = ms.loss_total
+            meta4tb[f"{wd1}/{WD_loss_noreg}"] = ms.loss_no_reg
+            meta4tb[f"{wd1}/{WD_loss_reg}"] = ms.loss_reg
+            meta4tb[f"{wd1}/{WD_state_mse}"] = ms.x_mse
+            meta4tb[f"{wd1}/{WD_latent_mse}"] = ms.h_mse
+            meta4tb[f"{wd1}/{WD_state_maxtse}"] = ms.x_maxt_sumj_se
+            meta4tb[f"{wd1}/{WD_latent_maxtse}"] = ms.h_maxt_sumj_se
+            for j, ae in enumerate(ms.x_maxt_ae):
+                meta4tb[f"{wd1}/{WD_state_inf}_{j}"] = ae
         # 添加到 tensorboard
         if self._tbsw is not None:
             add_scalar = self._tbsw.add_scalar
-            for name, v in meta.items():
+            for name, v in meta4tb.items():
                 add_scalar(f"{model_name}/{name}", v, itr_new)
 
         # 添加到 csv
-        meta["model_name"] = model_name
-        meta[WD_lr] = lr
-        meta[WD_iter] = itr_new
-        new_row = pd.Series(meta)
+        meta4csv = {k: v for k, v in meta4tb.items() if k in self._csv_columns}
+        meta4csv["model_name"] = model_name
+        meta4csv[WD_lr] = lr
+        meta4csv[WD_iter] = itr_new
+        new_row = pd.Series(meta4csv)
         df.loc[len(df) + 1] = new_row
         if to_csv:
             self._fn_csv.parent.mkdir(parents=True, exist_ok=True)
