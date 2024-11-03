@@ -23,7 +23,6 @@ from data.data_helper_fns import KoopmanData
 from tqdm import tqdm
 from .protol4config import RunConfig
 from .train_utils import *
-from tensorboardX import SummaryWriter as TBXWriter
 
 
 def now2str():
@@ -535,7 +534,7 @@ def main():
         train_u = None
         val_u = None
 
-    sw = TinySummrayWriter(SUMMARY_DIR, model_name=MODEL_NAME)
+    sw = KoopmanSummrayWriter(SUMMARY_DIR, model_name=MODEL_NAME)
     viz = cfg.viz
     if viz:
         vp = VizProcess(

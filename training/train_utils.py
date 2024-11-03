@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.nn import functional as F
 from .protol4config import RunConfig
-from torch.utils.tensorboard import SummaryWriter as TBSWriter
 
 
 def count_parameters(net: nn.Module):
@@ -301,10 +300,15 @@ K_val_loss_noreg = f"{WD1_val}/{WD_loss_noreg}"
 K_val_loss_reg = f"{WD1_val}/{WD_loss_reg}"
 
 
-class TinySummrayWriter:
-    def __init__(self, fname: str, model_name: str):
-        self._fn = Path(fname).resolve()
-        self._tb = TBSWriter(str(self._fn.parent / "tensorboard"))
+class KoopmanSummrayWriter:
+    def __init__(self, fname: str, model_name: str, use_tensorboard=True):
+        self._fn_csv = Path(fname).resolve()
+        if use_tensorboard:
+            from torch.utils.tensorboard import SummaryWriter as TBSWriter
+
+            self._tbsw = TBSWriter(str(self._fn_csv.parent / "tensorboard"))
+        else:
+            self._tbsw = None
         colums = [
             "model_name",
             WD_iter,
@@ -322,7 +326,7 @@ class TinySummrayWriter:
             ]:
                 colums.append(f"{wd1}/{wd2}")
         df = pd.DataFrame(columns=colums)
-        if self._fn.exists():  # merge
+        if self._fn_csv.exists():  # merge
             df_ = pd.read_csv(fname)
             try:
                 df = pd.concat([df, df_], ignore_index=True)
@@ -359,9 +363,10 @@ class TinySummrayWriter:
             meta[f"{wd1}/{WD_state_maxtse}"] = ms.x_inf_sse
             meta[f"{wd1}/{WD_latent_maxtse}"] = ms.h_inf_sse
         # 添加到 tensorboard
-        add_scalar = self._tb.add_scalar
-        for name, v in meta.items():
-            add_scalar(f"{model_name}/{name}", v, itr_new)
+        if self._tbsw is not None:
+            add_scalar = self._tbsw.add_scalar
+            for name, v in meta.items():
+                add_scalar(f"{model_name}/{name}", v, itr_new)
 
         # 添加到 csv
         meta["model_name"] = model_name
@@ -370,8 +375,8 @@ class TinySummrayWriter:
         new_row = pd.Series(meta)
         df.loc[len(df) + 1] = new_row
         if to_csv:
-            self._fn.parent.mkdir(parents=True, exist_ok=True)
-            df.to_csv(self._fn, index=False)
+            self._fn_csv.parent.mkdir(parents=True, exist_ok=True)
+            df.to_csv(self._fn_csv, index=False)
 
     def filter_by_model(self):
         df = self._df
@@ -387,9 +392,9 @@ class TinySummrayWriter:
         return min_val
 
     def close(self):
-        if self._tb is not None:
-            self._tb.close()
-            self._tb = None
+        if self._tbsw is not None:
+            self._tbsw.close()
+            self._tbsw = None
         self._df = None
 
     def __del__(self):

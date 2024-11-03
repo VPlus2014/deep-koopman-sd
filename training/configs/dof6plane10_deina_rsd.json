@@ -23,7 +23,7 @@
     "task_head": "dof6_10",
     "description": "",
     "weights_name": "/model.pt",
-    "epochs": 1000,
+    "epochs": 200,
     "batch_size": 128,
     "lr": 0.01,
     "lr_sch_step": 50,
